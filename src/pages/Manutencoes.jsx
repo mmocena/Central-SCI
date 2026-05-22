@@ -272,7 +272,7 @@ export default function Manutencoes() {
                       </div>
                     </button>
 
-                    <div className="bg-sci-red flex items-center justify-center min-w-[3rem] px-2 shrink-0 self-stretch">
+                    <div className="bg-sci-red flex items-center justify-center min-w-[4rem] px-2 shrink-0 self-stretch">
                       <span className="text-white font-bold text-base leading-none">{String(local.numero).padStart(2, '0')}</span>
                     </div>
 
@@ -650,7 +650,7 @@ export default function Manutencoes() {
                       </div>
                     </button>
 
-                    <div className="bg-sci-red flex items-center justify-center min-w-[3rem] px-2 shrink-0 self-stretch">
+                    <div className="bg-sci-red flex items-center justify-center min-w-[4rem] px-2 shrink-0 self-stretch">
                       <span className="text-white font-bold text-base leading-none">{String(local.numero).padStart(2, '0')}</span>
                     </div>
 

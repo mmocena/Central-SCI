@@ -49,7 +49,7 @@ export default function LocalCard({ local, onClick }) {
       className="w-full text-left active:scale-[0.99] transition-transform hover:shadow-md bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex"
     >
       {/* Coluna esquerda — badge vermelho altura total */}
-      <div className="bg-sci-red flex items-center justify-center gap-1 min-w-[3rem] px-2 shrink-0 self-stretch">
+      <div className="bg-sci-red flex items-center justify-center gap-1 min-w-[4rem] px-2 shrink-0 self-stretch">
         <IconeExtintor size={22} color="#ffffff" />
         <span className="text-white font-bold text-lg leading-none">{String(local.numero).padStart(2, '0')}</span>
       </div>
