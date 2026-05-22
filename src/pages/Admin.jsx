@@ -255,7 +255,7 @@ function AdminLocais() {
         {locais.map(l => (
           <div key={l.id} className={`card flex items-stretch justify-between gap-3 p-0 overflow-hidden ${editandoId === l.id ? 'ring-2 ring-sci-red' : ''}`}>
             {/* Número — altura total */}
-            <div className="bg-sci-red flex items-center justify-center px-3 shrink-0 self-stretch">
+            <div className="bg-sci-red flex items-center justify-center w-12 shrink-0 self-stretch">
               <span className="font-bold text-white text-sm">{String(l.numero).padStart(2, '0')}</span>
             </div>
             {/* Conteúdo */}
