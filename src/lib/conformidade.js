@@ -23,8 +23,10 @@ function atende(atual, exigida) {
 
 // capExtOk: boolean override para locais com 2 slots (avaliação conjunta)
 // operacional: false → sempre não conforme
-export function calcularConformidade({ capExtAtual, capExtExigida, tipoAtual, tipoExigido, capExtOk, operacional }) {
+// sinalizacaoOk: false → sempre não conforme
+export function calcularConformidade({ capExtAtual, capExtExigida, tipoAtual, tipoExigido, capExtOk, operacional, sinalizacaoOk }) {
   if (operacional === false) return 'nao_conforme'
+  if (sinalizacaoOk === false) return 'nao_conforme'
 
   const tipoErrado = tipoAtual && tipoExigido && tipoAtual.trim() !== tipoExigido.trim()
 

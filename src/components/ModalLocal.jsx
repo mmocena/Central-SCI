@@ -50,7 +50,8 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
         capExtExigida: local.planta_cap_ext_exigida,
         tipoAtual: slotData.extintor_tipo,
         tipoExigido: local.planta_tipo_exigido,
-        operacional: slotData.operacional
+        operacional: slotData.operacional,
+        sinalizacaoOk: slotData.sinalizacao_ok
       })
       await Promise.all([
         registrarInspecao({ localId: local.id, slot: 'A', responsavel, equipe: dados.slotA.equipe, payload: dados.slotA, conformidade: conf(dados.slotA) }),
@@ -62,7 +63,8 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
         capExtExigida: local.planta_cap_ext_exigida,
         tipoAtual: dados.extintor_tipo,
         tipoExigido: local.planta_tipo_exigido,
-        operacional: dados.operacional
+        operacional: dados.operacional,
+        sinalizacaoOk: dados.sinalizacao_ok
       })
       await registrarInspecao({
         localId: local.id,

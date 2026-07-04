@@ -3,6 +3,17 @@ import { NavLink, Link } from 'react-router-dom'
 
 const MENU_ITEMS = [
   {
+    to: '/menu',
+    label: 'Menu',
+    icon: (active) => (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#dc2626' : '#64748b'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="4" y1="6" x2="20" y2="6"/>
+        <line x1="4" y1="12" x2="20" y2="12"/>
+        <line x1="4" y1="18" x2="20" y2="18"/>
+      </svg>
+    ),
+  },
+  {
     to: '/inspecao',
     label: 'Inspeção',
     icon: (active) => (
@@ -39,6 +50,16 @@ const MENU_ITEMS = [
         <rect x="9" y="3" width="6" height="4" rx="1"/>
         <line x1="9" y1="12" x2="15" y2="12"/>
         <line x1="9" y1="16" x2="13" y2="16"/>
+      </svg>
+    ),
+  },
+  {
+    to: '/historico',
+    label: 'Histórico de Inspeções',
+    icon: (active) => (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#dc2626' : '#64748b'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9"/>
+        <polyline points="12 7 12 12 15.5 14"/>
       </svg>
     ),
   },
