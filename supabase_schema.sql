@@ -51,6 +51,8 @@ create table local_estado_atual (
   situacao_conformidade text check (
     situacao_conformidade in ('conforme', 'alerta', 'nao_conforme')
   ),
+  motivo_nao_conformidade text,
+  observacoes text,
 
   -- manutenção
   em_manutencao boolean default false,

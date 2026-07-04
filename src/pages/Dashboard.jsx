@@ -134,6 +134,9 @@ export default function Dashboard() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-700 truncate">{local.edificacao}</p>
                   <p className="text-xs text-slate-400 truncate">{estado.motivo_nao_conformidade || 'Motivo não informado'}</p>
+                  {estado.observacoes && (
+                    <p className="text-xs text-slate-400 italic truncate">"{estado.observacoes}"</p>
+                  )}
                 </div>
               </button>
             ))}

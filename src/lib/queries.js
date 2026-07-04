@@ -69,6 +69,7 @@ export async function registrarInspecao({ localId, slot, responsavel, equipe, pa
       reserva_empresa: payload.reserva_empresa ?? false,
       situacao_conformidade: conformidade,
       motivo_nao_conformidade: payload.motivo_nao_conformidade ?? null,
+      observacoes: payload.observacoes ?? null,
       validade_nivel2: payload.validade_nivel2 ? payload.validade_nivel2 + '-01' : null,
       validade_nivel3: payload.validade_nivel3 ? payload.validade_nivel3 + '-12-01' : null,
       data_ultima_inspecao: agora,

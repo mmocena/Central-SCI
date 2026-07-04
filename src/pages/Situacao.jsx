@@ -123,6 +123,7 @@ export default function Situacao() {
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Val. N3</th>
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Situação</th>
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Não Conformidade</th>
+              <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200 min-w-[160px]">Observações</th>
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Status</th>
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Data</th>
             </tr>
@@ -192,6 +193,11 @@ export default function Situacao() {
                   {/* Não Conformidade */}
                   <td className="px-3 py-2 text-xs text-red-500 text-center">
                     {estado.motivo_nao_conformidade || <span className="text-slate-300">—</span>}
+                  </td>
+
+                  {/* Observações */}
+                  <td className="px-3 py-2 text-xs text-slate-500 text-center">
+                    {estado.observacoes || <span className="text-slate-300">—</span>}
                   </td>
 
                   {/* Status */}
