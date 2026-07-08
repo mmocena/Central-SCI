@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motivosNaoConformidade, textoObservacaoAutomatica } from '../lib/conformidade'
 
 function CampoColapsavel({ label, valor, aberto, onTrocar, children }) {
   if (valor && !aberto) {
@@ -152,6 +153,18 @@ export default function FormInspecao({
     }))
   }
 
+  // Motivos + texto automático de Observações, recalculados a cada resposta
+  function motivosSlotDual(sk) {
+    return motivosNaoConformidade({
+      operacional: form[`operacional_${sk}`],
+      fatoresSelecionados: fatores.filter(f => form[`fatores_nc_${sk}`].includes(f.id)).map(f => f.descricao),
+      sinalizacaoOk: form.sinalizacao_ok,
+      capExtOk: local.planta_cap_ext_exigida ? form.cap_ext_ok : undefined,
+      tipoAtual: form[`tipo_${sk}`],
+      tipoExigido: local.planta_tipo_exigido
+    })
+  }
+
   // ── Submit dual-slot ──
   async function handleSubmitDual() {
     if (!form.equipe) return alert('Selecione a equipe.')
@@ -159,13 +172,12 @@ export default function FormInspecao({
     if (form.operacional_a === null) return alert('Informe o resultado da inspeção do Extintor A.')
     if (form.operacional_b === null) return alert('Informe o resultado da inspeção do Extintor B.')
     if (form.sinalizacao_ok === null) return alert('Informe a situação da sinalização.')
-    if (form.sinalizacao_ok === false && !form.observacoes.trim()) return alert('Descreva a não conformidade da sinalização no campo Observações.')
 
-    const shared = { sinalizacao_ok: form.sinalizacao_ok, observacoes: form.observacoes, equipe: form.equipe, cap_ext_ok: form.cap_ext_ok }
+    const motivosA = motivosSlotDual('a')
+    const motivosB = motivosSlotDual('b')
+    const extra = form.observacoes.trim()
 
-    const motivosA = fatores.filter(f => form.fatores_nc_a.includes(f.id)).map(f => f.descricao)
-    const motivosB = fatores.filter(f => form.fatores_nc_b.includes(f.id)).map(f => f.descricao)
-    if (form.sinalizacao_ok === false) { motivosA.push('Sinalização'); motivosB.push('Sinalização') }
+    const shared = { sinalizacao_ok: form.sinalizacao_ok, equipe: form.equipe, cap_ext_ok: form.cap_ext_ok }
 
     setEnviando(true)
     try {
@@ -176,6 +188,7 @@ export default function FormInspecao({
           validade_nivel2: form.n2_a, validade_nivel3: form.n3_a,
           operacional: form.operacional_a, fatores_nc: form.fatores_nc_a,
           motivo_nao_conformidade: motivosA.length ? motivosA.join(', ') : null,
+          observacoes: [textoObservacaoAutomatica(motivosA), extra].filter(Boolean).join(' '),
           reserva_empresa: false, ...shared
         },
         slotB: {
@@ -183,6 +196,7 @@ export default function FormInspecao({
           validade_nivel2: form.n2_b, validade_nivel3: form.n3_b,
           operacional: form.operacional_b, fatores_nc: form.fatores_nc_b,
           motivo_nao_conformidade: motivosB.length ? motivosB.join(', ') : null,
+          observacoes: [textoObservacaoAutomatica(motivosB), extra].filter(Boolean).join(' '),
           reserva_empresa: false, ...shared
         }
       })
@@ -198,19 +212,21 @@ export default function FormInspecao({
     if (!form.equipe) return alert('Selecione a equipe.')
     if (form.operacional === null) return alert('Informe o resultado da inspeção.')
     if (form.sinalizacao_ok === null) return alert('Informe a situação da sinalização.')
-    if (form.sinalizacao_ok === false && !form.observacoes.trim()) return alert('Descreva a não conformidade da sinalização no campo Observações.')
 
-    const motivos = []
-    if (form.cap_ext_ok === false) motivos.push('Capacidade Extintora reduzida')
-    if (form.operacional === false && form.fatores_nc.length > 0) {
-      motivos.push(...fatores.filter(f => form.fatores_nc.includes(f.id)).map(f => f.descricao))
-    }
-    if (form.sinalizacao_ok === false) motivos.push('Sinalização')
+    const motivos = motivosNaoConformidade({
+      operacional: form.operacional,
+      fatoresSelecionados: fatores.filter(f => form.fatores_nc.includes(f.id)).map(f => f.descricao),
+      sinalizacaoOk: form.sinalizacao_ok,
+      capExtOk: local.planta_cap_ext_exigida ? form.cap_ext_ok : undefined,
+      tipoAtual: form.extintor_tipo,
+      tipoExigido: local.planta_tipo_exigido
+    })
     const motivo_nao_conformidade = motivos.length > 0 ? motivos.join(', ') : null
+    const observacoes = [textoObservacaoAutomatica(motivos), form.observacoes.trim()].filter(Boolean).join(' ')
 
     setEnviando(true)
     try {
-      await onSubmit({ ...form, reserva_empresa: estadoAtual?.reserva_empresa ?? false, motivo_nao_conformidade })
+      await onSubmit({ ...form, observacoes, reserva_empresa: estadoAtual?.reserva_empresa ?? false, motivo_nao_conformidade })
     } catch (e) {
       alert('Erro ao registrar: ' + e.message)
     } finally {
@@ -226,6 +242,9 @@ export default function FormInspecao({
   // DUAL-SLOT FORM
   // ════════════════════════════════════════
   if (temDoisSlots) {
+    const textoAutoA = textoObservacaoAutomatica(motivosSlotDual('a'))
+    const textoAutoB = textoObservacaoAutomatica(motivosSlotDual('b'))
+
     return (
       <div className="card space-y-5">
         <p className="text-sm font-bold text-sci-text border-b border-sci-border pb-2">{titulo}</p>
@@ -289,18 +308,27 @@ export default function FormInspecao({
 
         {/* 7. Observações */}
         <div className="space-y-2">
-          <p className="text-sm text-slate-700">
-            7. Observações:
-            {form.sinalizacao_ok === false && (
-              <span className="text-red-600 font-medium"> *obrigatório</span>
-            )}
-          </p>
+          <p className="text-sm text-slate-700">7. Observações:</p>
+          {(textoAutoA || textoAutoB) && (
+            <div className="space-y-1">
+              {textoAutoA && (
+                <p className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-600">
+                  <span className="font-semibold">A:</span> {textoAutoA}
+                </p>
+              )}
+              {textoAutoB && (
+                <p className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-600">
+                  <span className="font-semibold">B:</span> {textoAutoB}
+                </p>
+              )}
+            </div>
+          )}
           <textarea
             value={form.observacoes}
             onChange={e => set('observacoes', e.target.value)}
-            placeholder="Descreva não conformidades, informações de acesso, melhorias ou outras informações."
-            rows={3}
-            className={`resize-none ${form.sinalizacao_ok === false && !form.observacoes.trim() ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''}`}
+            placeholder="Escreva mais detalhes aqui, se necessário."
+            rows={2}
+            className="resize-none"
           />
         </div>
 
@@ -334,6 +362,15 @@ export default function FormInspecao({
   // ════════════════════════════════════════
   // SINGLE-SLOT FORM (original)
   // ════════════════════════════════════════
+  const textoAuto = textoObservacaoAutomatica(motivosNaoConformidade({
+    operacional: form.operacional,
+    fatoresSelecionados: fatores.filter(f => form.fatores_nc.includes(f.id)).map(f => f.descricao),
+    sinalizacaoOk: form.sinalizacao_ok,
+    capExtOk: local.planta_cap_ext_exigida ? form.cap_ext_ok : undefined,
+    tipoAtual: form.extintor_tipo,
+    tipoExigido: local.planta_tipo_exigido
+  }))
+
   return (
     <div className="card space-y-5">
       <p className="text-sm font-bold text-sci-text border-b border-sci-border pb-2">{titulo}</p>
@@ -459,18 +496,18 @@ export default function FormInspecao({
 
       {/* 7. Observações */}
       <div className="space-y-2">
-        <p className="text-sm text-slate-700">
-          7. Observações:
-          {form.sinalizacao_ok === false && (
-            <span className="text-red-600 font-medium"> *obrigatório</span>
-          )}
-        </p>
+        <p className="text-sm text-slate-700">7. Observações:</p>
+        {textoAuto && (
+          <p className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-600">
+            {textoAuto}
+          </p>
+        )}
         <textarea
           value={form.observacoes}
           onChange={e => set('observacoes', e.target.value)}
-          placeholder="Descreva não conformidades, informações de acesso, melhorias ou outras informações."
-          rows={3}
-          className={`resize-none ${form.sinalizacao_ok === false && !form.observacoes.trim() ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''}`}
+          placeholder="Escreva mais detalhes aqui, se necessário."
+          rows={2}
+          className="resize-none"
         />
       </div>
 

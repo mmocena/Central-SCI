@@ -45,3 +45,28 @@ export function calcularConformidade({ capExtAtual, capExtExigida, tipoAtual, ti
   if (!parsedAtual || !atende(parsedAtual, parsedExigida)) return 'nao_conforme'
   return tipoErrado ? 'alerta' : 'conforme'
 }
+
+// Lista os motivos por trás da conformidade calculada — usada tanto para o
+// resumo "Não Conformidade" quanto para o texto automático de Observações.
+// Cobre o caminho de capExtOk booleano (usado pelo formulário de inspeção padrão).
+export function motivosNaoConformidade({ operacional, fatoresSelecionados = [], sinalizacaoOk, capExtOk, tipoAtual, tipoExigido }) {
+  const motivos = []
+
+  if (operacional === false) {
+    motivos.push(fatoresSelecionados.length ? fatoresSelecionados.join(', ') : 'Extintor não operacional')
+  }
+  if (sinalizacaoOk === false) motivos.push('Sinalização não conforme')
+  if (capExtOk === false) motivos.push('Capacidade extintora abaixo do exigido pela planta')
+
+  const tipoErrado = tipoAtual && tipoExigido && tipoAtual.trim() !== tipoExigido.trim()
+  if (tipoErrado) motivos.push(`Tipo divergente da planta (atual: ${tipoAtual}, exigido: ${tipoExigido})`)
+
+  return motivos
+}
+
+// Texto fixo gerado a partir dos motivos — presente nas Observações sempre que
+// houver alerta ou não conformidade, para que a repetição do mesmo problema em
+// inspeções sucessivas fique visível. Quando conforme, não gera texto nenhum.
+export function textoObservacaoAutomatica(motivos) {
+  return motivos.length ? motivos.join('. ') + '.' : ''
+}

@@ -39,7 +39,7 @@ export async function fetchFatoresNaoOperacionalidade() {
 export async function fetchHistoricoInspecoes() {
   const { data, error } = await supabase
     .from('historico_operacoes')
-    .select('*, locais(numero, edificacao, descricao)')
+    .select('*, locais(numero, edificacao, descricao, planta_tipo_exigido, planta_cap_ext_exigida)')
     .eq('modo', 'inspecao')
     .order('data_operacao', { ascending: false })
 
@@ -58,7 +58,7 @@ export async function registrarInspecao({ localId, slot, responsavel, equipe, pa
       data_operacao: agora,
       responsavel,
       equipe,
-      payload
+      payload: { ...payload, conformidade }
     }),
     supabase.from('local_estado_atual').upsert({
       local_id: localId,
