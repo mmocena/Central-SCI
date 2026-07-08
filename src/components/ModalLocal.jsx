@@ -5,12 +5,14 @@ import { calcularConformidade } from '../lib/conformidade'
 import IconeExtintor from './IconeExtintor'
 import FormInspecao from './FormInspecao'
 import FormEnvioManutencao from './FormEnvioManutencao'
+import { useToast } from './Toast'
 
 const ANO_ATUAL = new Date().getFullYear()
 const ANOS_N3 = [ANO_ATUAL - 1, ...Array.from({ length: 6 }, (_, i) => ANO_ATUAL + i)]
 const EQUIPES = ['ALFA', 'BRAVO', 'CHARLIE', 'DELTA']
 
 export default function ModalLocal({ local, responsavel, onClose, onAtualizar, substituicaoAtiva = false, envioPreAberto = false }) {
+  const showToast = useToast()
   const [tiposExtintor, setTiposExtintor] = useState([])
   const [fatores, setFatores] = useState([])
   const [modoManutencao, setModoManutencao] = useState(envioPreAberto ? 'envio' : null)
@@ -78,6 +80,7 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
     if (modoSubstituicao) {
       await marcarReserva({ localId: local.id, slot: slotAtivo, valor: false })
     }
+    showToast('Registrado com sucesso.')
     onAtualizar()
     onClose()
   }
@@ -245,6 +248,7 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
                 inspecao,
                 conformidade
               })
+              showToast('Envio para manutenção registrado com sucesso.')
               onAtualizar()
               onClose()
             }}

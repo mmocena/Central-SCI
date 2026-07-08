@@ -1,7 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { fetchEstoqueDeposito, fetchTiposExtintor, ajustarEstoqueDeposito, upsertItemDeposito, excluirItemDeposito } from '../lib/queries'
+import { useToast } from '../components/Toast'
 
 export default function Deposito() {
+  const showToast = useToast()
   const [estoque, setEstoque] = useState([])
   const [tipos, setTipos] = useState([])
   const [loading, setLoading] = useState(true)
@@ -30,6 +32,7 @@ export default function Deposito() {
       })
       setForm({ tipo: '', kg: '', categoria: 'SCI', operacional: true })
       setFormAberto(false)
+      showToast('Item adicionado ao depósito.')
       await carregar()
     } catch (e) {
       alert('Erro: ' + e.message)
@@ -46,6 +49,7 @@ export default function Deposito() {
   async function handleExcluir(id) {
     if (!confirm('Remover este item do depósito?')) return
     await excluirItemDeposito(id)
+    showToast('Item removido do depósito.')
     await carregar()
   }
 

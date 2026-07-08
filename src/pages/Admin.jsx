@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { verificarSenhaAdmin } from '../lib/queries'
+import { useToast } from '../components/Toast'
 
 const SESSION_KEY = 'sci_config_auth'
 
@@ -87,6 +88,7 @@ export default function Admin() {
 }
 
 function AdminLocais() {
+  const showToast = useToast()
   const [locais, setLocais] = useState([])
   const [tipos, setTipos] = useState([])
   const [form, setForm] = useState({
@@ -156,6 +158,7 @@ function AdminLocais() {
       : await supabase.from('locais').insert(payload)
     setSalvando(false)
     if (error) return alert('Erro: ' + error.message)
+    showToast(editandoId ? 'Local atualizado com sucesso.' : 'Local cadastrado com sucesso.')
     cancelarEdicao()
     await carregar()
   }

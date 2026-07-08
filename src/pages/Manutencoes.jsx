@@ -3,6 +3,7 @@ import { fetchLocaisComReserva, fetchLocaisComVencimento, fetchTiposExtintor, fe
 import { supabase } from '../lib/supabase'
 import IconeExtintor from '../components/IconeExtintor'
 import ModalLocal from '../components/ModalLocal'
+import { useToast } from '../components/Toast'
 
 const EQUIPES = ['ALFA', 'BRAVO', 'CHARLIE', 'DELTA']
 const STORAGE_KEY = 'sci_responsavel'
@@ -43,6 +44,7 @@ function CardComoUsar({ descricao, texto, aberto, onToggle }) {
 }
 
 export default function Manutencoes() {
+  const showToast = useToast()
   const [ordens, setOrdens] = useState([])
   const [reservas, setReservas] = useState([])
   const [vencimentos, setVencimentos] = useState([])
@@ -129,6 +131,7 @@ export default function Manutencoes() {
       await registrarRecebimentoMassa({ ordens: ordensSelecionadas, responsavel, equipe })
       setSelecionados(new Set())
       setEquipe('')
+      showToast('Recebimento registrado com sucesso.')
       await carregar()
     } catch (e) {
       alert('Erro ao registrar: ' + e.message)
@@ -402,6 +405,7 @@ export default function Manutencoes() {
                     })
                     setFormEstoque({ tipo: '', kg: '', nivel: '', quantidade: 1, equipe: '' })
                     setEstoquePainel(false)
+                    showToast('Envio para o depósito registrado com sucesso.')
                     await carregar()
                   } catch (e) {
                     alert('Erro: ' + e.message)

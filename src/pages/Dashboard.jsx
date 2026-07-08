@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fetchLocaisComEstado, fetchLocaisComVencimento } from '../lib/queries'
+import ModalDetalhesLocal from '../components/ModalDetalhesLocal'
 
 function Stat({ label, valor, cls = 'text-sci-text', onClick }) {
   const Tag = onClick ? 'button' : 'div'
@@ -21,6 +22,7 @@ export default function Dashboard() {
   const [locais, setLocais] = useState([])
   const [vencimentos, setVencimentos] = useState([])
   const [loading, setLoading] = useState(true)
+  const [detalheAberto, setDetalheAberto] = useState(null)
 
   useEffect(() => {
     carregar()
@@ -120,7 +122,7 @@ export default function Dashboard() {
             {naoConformidades.slice(0, 6).map(({ local, slot, estado }) => (
               <button
                 key={`${local.id}-${slot}`}
-                onClick={() => navigate('/situacao')}
+                onClick={() => setDetalheAberto({ local, slot, estado })}
                 className="w-full flex items-center gap-3 p-3 rounded-2xl border bg-white shadow-sm text-left active:scale-[0.98] transition-transform"
                 style={{ borderColor: estado.situacao_conformidade === 'nao_conforme' ? '#fecaca' : '#fde68a' }}
               >
@@ -143,6 +145,15 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {detalheAberto && (
+        <ModalDetalhesLocal
+          local={detalheAberto.local}
+          slot={detalheAberto.slot}
+          estado={detalheAberto.estado}
+          onClose={() => setDetalheAberto(null)}
+        />
+      )}
     </div>
   )
 }
