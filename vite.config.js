@@ -25,13 +25,10 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         runtimeCaching: [
           {
+            // Dados de conformidade/segurança não podem vir de cache desatualizado
+            // silenciosamente — sem modo offline real ainda, sempre buscar da rede.
             urlPattern: /^https:\/\/twrnmwdmkhjpwmauqlsu\.supabase\.co\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-cache',
-              networkTimeoutSeconds: 10,
-              expiration: { maxEntries: 200, maxAgeSeconds: 86400 }
-            }
+            handler: 'NetworkOnly'
           }
         ]
       }
