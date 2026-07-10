@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchLocaisComEstado } from '../lib/queries'
+import { fetchLocaisComEstado, fetchInicioPeriodoInspecao, resetarPeriodoInspecao } from '../lib/queries'
 import LocalCard from '../components/LocalCard'
 import ModalLocal from '../components/ModalLocal'
+import { useToast } from '../components/Toast'
 
 const STORAGE_KEY = 'sci_responsavel'
 
 export default function Home() {
+  const showToast = useToast()
   const [nome, setNome] = useState(() => localStorage.getItem(STORAGE_KEY) || '')
   const [nomeSalvo, setNomeSalvo] = useState(() => !!localStorage.getItem(STORAGE_KEY))
   const [locais, setLocais] = useState([])
@@ -15,12 +17,17 @@ export default function Home() {
   const [filtros, setFiltros] = useState({ edificacao: '', situacao: '', status: '' })
   const [destacarNome, setDestacarNome] = useState(false)
   const [filtrosAberto, setFiltrosAberto] = useState(false)
+  const [inicioPeriodo, setInicioPeriodo] = useState(null)
+  const [resetAberto, setResetAberto] = useState(false)
+  const [resetando, setResetando] = useState(false)
 
   useEffect(() => {
     carregarLocais()
+    carregarPeriodo()
     const channel = supabase
       .channel('estado-locais')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'local_estado_atual' }, carregarLocais)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'configuracoes' }, carregarPeriodo)
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [])
@@ -33,6 +40,28 @@ export default function Home() {
       console.error(e)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function carregarPeriodo() {
+    try {
+      setInicioPeriodo(await fetchInicioPeriodoInspecao())
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  async function confirmarReset() {
+    setResetando(true)
+    try {
+      await resetarPeriodoInspecao()
+      await carregarPeriodo()
+      showToast('Período de vistoria reiniciado.')
+      setResetAberto(false)
+    } catch (e) {
+      showToast('Erro ao reiniciar período: ' + e.message, 'erro')
+    } finally {
+      setResetando(false)
     }
   }
 
@@ -158,22 +187,34 @@ export default function Home() {
               ? `${locaisFiltrados.length} de ${locais.length} locais`
               : `${locais.length} locais`}
           </p>
-          <button
-            onClick={() => setFiltrosAberto(true)}
-            className="flex items-center gap-1.5 btn-option py-1.5 px-3 text-xs"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="4" y1="6" x2="20" y2="6"/>
-              <line x1="8" y1="12" x2="16" y2="12"/>
-              <line x1="11" y1="18" x2="13" y2="18"/>
-            </svg>
-            Filtros
-            {filtrosAtivos > 0 && (
-              <span className="bg-sci-red text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
-                {filtrosAtivos}
-              </span>
-            )}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setResetAberto(true)}
+              className="flex items-center gap-1.5 btn-option py-1.5 px-3 text-xs text-sci-red border-red-200"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 3-6.7"/>
+                <path d="M3 4v5h5"/>
+              </svg>
+              RESET
+            </button>
+            <button
+              onClick={() => setFiltrosAberto(true)}
+              className="flex items-center gap-1.5 btn-option py-1.5 px-3 text-xs"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="4" y1="6" x2="20" y2="6"/>
+                <line x1="8" y1="12" x2="16" y2="12"/>
+                <line x1="11" y1="18" x2="13" y2="18"/>
+              </svg>
+              Filtros
+              {filtrosAtivos > 0 && (
+                <span className="bg-sci-red text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
+                  {filtrosAtivos}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       )}
 
@@ -201,6 +242,7 @@ export default function Home() {
           <LocalCard
             key={local.id}
             local={local}
+            inicioPeriodo={inicioPeriodo}
             onClick={() => {
               if (!nomeSalvo) {
                 setDestacarNome(true)
@@ -299,6 +341,31 @@ export default function Home() {
           onClose={() => setLocalSelecionado(null)}
           onAtualizar={carregarLocais}
         />
+      )}
+
+      {/* Modal de confirmação — reset do período de vistoria */}
+      {resetAberto && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/40 p-4" onClick={() => !resetando && setResetAberto(false)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <p className="font-semibold text-sci-text">Reiniciar período de vistoria?</p>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Todos os extintores voltam a aparecer com o fundo <strong className="text-sci-red">vermelho</strong> na lista de Inspeção,
+              como se ainda não tivessem sido vistoriados neste novo período. Um extintor só fica <strong style={{ color: 'rgb(52, 145, 30)' }}>verde</strong> novamente
+              depois de uma nova inspeção registrada a partir de agora.
+            </p>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Isso é só um indicador visual — nenhuma inspeção, histórico ou dado já registrado é apagado.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setResetAberto(false)} disabled={resetando} className="btn-option flex-1 disabled:opacity-40">
+                Cancelar
+              </button>
+              <button onClick={confirmarReset} disabled={resetando} className="btn-primary flex-1 disabled:opacity-40">
+                {resetando ? 'Reiniciando...' : 'Reiniciar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

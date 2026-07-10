@@ -26,11 +26,20 @@ function formatarData(iso) {
     ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function LocalCard({ local, onClick }) {
+export default function LocalCard({ local, onClick, inicioPeriodo }) {
   const slots = local.local_estado_atual || []
   const temDoisSlots = local.tem_slot_a && local.tem_slot_b
   const temManutencao = slots.some(s => s.em_manutencao)
   const temReserva = slots.some(s => s.reserva_empresa)
+
+  // Vistoriado no período: todos os slots do local (A e, se houver, B)
+  // precisam ter sido inspecionados depois do início do período atual.
+  const slotsObrigatorios = ['A', 'B'].filter(s => s === 'A' ? local.tem_slot_a : local.tem_slot_b)
+  const vistoriadoNoPeriodo = slotsObrigatorios.length > 0 && slotsObrigatorios.every(sk => {
+    const estado = slots.find(s => s.slot === sk)
+    if (!estado?.data_ultima_inspecao) return false
+    return !inicioPeriodo || estado.data_ultima_inspecao >= inicioPeriodo
+  })
 
   const ultimaInsp = slots.reduce((acc, s) => {
     if (!s.data_ultima_inspecao) return acc
@@ -48,8 +57,8 @@ export default function LocalCard({ local, onClick }) {
       onClick={onClick}
       className="w-full text-left active:scale-[0.99] transition-transform hover:shadow-md bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex"
     >
-      {/* Coluna esquerda — badge vermelho altura total */}
-      <div className="bg-sci-red flex items-center justify-center gap-1 min-w-[4rem] px-2 shrink-0 self-stretch">
+      {/* Coluna esquerda — badge de status (vermelho = pendente, verde = vistoriado no período) */}
+      <div className={`flex items-center justify-center gap-1 min-w-[4rem] px-2 shrink-0 self-stretch ${vistoriadoNoPeriodo ? 'bg-sci-vistoriado' : 'bg-sci-red'}`}>
         <IconeExtintor size={22} color="#ffffff" />
         <span className="text-white font-bold text-lg leading-none">{String(local.numero).padStart(2, '0')}</span>
       </div>

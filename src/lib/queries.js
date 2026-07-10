@@ -48,6 +48,28 @@ export async function fetchHistoricoInspecoes() {
   return data || []
 }
 
+const CHAVE_INICIO_PERIODO = 'inicio_periodo_inspecao'
+
+// Marca o início do período de vistoria atual. Sem essa configuração
+// (nunca resetado), qualquer inspeção já feita conta como dentro do período.
+export async function fetchInicioPeriodoInspecao() {
+  const { data, error } = await supabase
+    .from('configuracoes')
+    .select('valor')
+    .eq('chave', CHAVE_INICIO_PERIODO)
+    .maybeSingle()
+
+  if (error) throw error
+  return data?.valor ?? null
+}
+
+export async function resetarPeriodoInspecao() {
+  const { error } = await supabase
+    .from('configuracoes')
+    .upsert({ chave: CHAVE_INICIO_PERIODO, valor: new Date().toISOString() }, { onConflict: 'chave' })
+  if (error) throw error
+}
+
 // ────────────────────────────────────────────────────────────────
 // Fila offline: se a rede cair no meio de uma gravação, a operação
 // é salva no IndexedDB e reenviada automaticamente ao reconectar.
