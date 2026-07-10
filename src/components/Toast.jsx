@@ -6,6 +6,7 @@ const ToastContext = createContext(null)
 const ESTILOS = {
   sucesso: 'bg-green-600',
   erro: 'bg-sci-red',
+  aviso: 'bg-amber-500',
 }
 
 let idCounter = 0
@@ -18,7 +19,7 @@ export function ToastProvider({ children }) {
     setToasts(t => [...t, { id, mensagem, tipo }])
     setTimeout(() => {
       setToasts(t => t.filter(x => x.id !== id))
-    }, 3000)
+    }, 4000)
   }, [])
 
   return (
@@ -41,7 +42,7 @@ export function ToastProvider({ children }) {
   )
 }
 
-// showToast(mensagem, 'sucesso' | 'erro')
+// showToast(mensagem, 'sucesso' | 'erro' | 'aviso')
 export function useToast() {
   const ctx = useContext(ToastContext)
   if (!ctx) throw new Error('useToast deve ser usado dentro de ToastProvider')

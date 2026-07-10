@@ -104,7 +104,13 @@ create table ordens_manutencao (
   equipe_retorno text,
   extintor_retornou_para text check (extintor_retornou_para in ('LOCAL', 'ESTOQUE')),
 
-  criado_em timestamptz default now()
+  criado_em timestamptz default now(),
+
+  -- fila offline: chave de idempotência gerada no clique, evita duplicar
+  -- a ordem se a mesma ação for reenviada automaticamente ao reconectar
+  client_op_id uuid unique,
+  lote_id uuid, -- agrupa as N unidades de um envio em lote (envio direto do estoque)
+  estoque_descontado boolean not null default false
 );
 
 -- FK circular: local_estado_atual → ordens_manutencao
@@ -127,7 +133,10 @@ create table historico_operacoes (
   responsavel text not null,
   equipe text not null check (equipe in ('ALFA', 'BRAVO', 'CHARLIE', 'DELTA')),
 
-  payload jsonb not null default '{}'
+  payload jsonb not null default '{}',
+
+  -- fila offline: mesma chave de idempotência do client_op_id de ordens_manutencao
+  client_op_id uuid unique
 );
 
 -- Estoque (1 linha por tipo de extintor)

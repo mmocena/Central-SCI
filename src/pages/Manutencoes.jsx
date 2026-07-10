@@ -128,10 +128,13 @@ export default function Manutencoes() {
     setRegistrando(true)
     try {
       const ordensSelecionadas = ordens.filter(o => selecionados.has(o.id))
-      await registrarRecebimentoMassa({ ordens: ordensSelecionadas, responsavel, equipe })
+      const resultado = await registrarRecebimentoMassa({ ordens: ordensSelecionadas, responsavel, equipe })
       setSelecionados(new Set())
       setEquipe('')
-      showToast('Recebimento registrado com sucesso.')
+      showToast(
+        resultado.queued ? 'Sem conexão — será enviado automaticamente ao reconectar.' : 'Recebimento registrado com sucesso.',
+        resultado.queued ? 'aviso' : 'sucesso'
+      )
       await carregar()
     } catch (e) {
       alert('Erro ao registrar: ' + e.message)
@@ -395,7 +398,7 @@ export default function Manutencoes() {
                   if (!responsavel) return alert('Informe seu nome antes de registrar.')
                   setEnviandoEstoque(true)
                   try {
-                    await registrarEnvioEstoque({
+                    const resultado = await registrarEnvioEstoque({
                       tipo: formEstoque.tipo,
                       kg: formEstoque.kg,
                       nivel: parseInt(formEstoque.nivel),
@@ -405,7 +408,10 @@ export default function Manutencoes() {
                     })
                     setFormEstoque({ tipo: '', kg: '', nivel: '', quantidade: 1, equipe: '' })
                     setEstoquePainel(false)
-                    showToast('Envio para o depósito registrado com sucesso.')
+                    showToast(
+                      resultado.queued ? 'Sem conexão — será enviado automaticamente ao reconectar.' : 'Envio para o depósito registrado com sucesso.',
+                      resultado.queued ? 'aviso' : 'sucesso'
+                    )
                     await carregar()
                   } catch (e) {
                     alert('Erro: ' + e.message)

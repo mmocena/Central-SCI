@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { enfileirar } from './offlineQueue'
 
 export async function fetchLocaisComEstado() {
   const { data, error } = await supabase
@@ -47,108 +48,102 @@ export async function fetchHistoricoInspecoes() {
   return data || []
 }
 
-export async function registrarInspecao({ localId, slot, responsavel, equipe, payload, conformidade }) {
-  const agora = new Date().toISOString()
+// ────────────────────────────────────────────────────────────────
+// Fila offline: se a rede cair no meio de uma gravação, a operação
+// é salva no IndexedDB e reenviada automaticamente ao reconectar.
+// Cada operação carrega um client_op_id gerado no clique — ao reenviar,
+// as funções internas (_registrarX) checam se esse id já foi gravado
+// antes de duplicar qualquer INSERT.
+// ────────────────────────────────────────────────────────────────
 
-  const [{ error: errHist }, { error: errEstado }] = await Promise.all([
-    supabase.from('historico_operacoes').insert({
-      modo: 'inspecao',
-      local_id: localId,
-      slot,
-      data_operacao: agora,
-      responsavel,
-      equipe,
-      payload: { ...payload, conformidade }
-    }),
-    supabase.from('local_estado_atual').upsert({
-      local_id: localId,
-      slot,
-      extintor_tipo: payload.extintor_tipo,
-      extintor_kg: payload.extintor_kg,
-      cap_ext_atual: payload.cap_ext_atual,
-      reserva_empresa: payload.reserva_empresa ?? false,
-      situacao_conformidade: conformidade,
-      motivo_nao_conformidade: payload.motivo_nao_conformidade ?? null,
-      observacoes: payload.observacoes ?? null,
-      validade_nivel2: payload.validade_nivel2 ? payload.validade_nivel2 + '-01' : null,
-      validade_nivel3: payload.validade_nivel3 ? payload.validade_nivel3 + '-12-01' : null,
-      data_ultima_inspecao: agora,
-      responsavel_ultima_inspecao: responsavel,
-      equipe_ultima_inspecao: equipe,
-      atualizado_em: agora
-    }, { onConflict: 'local_id,slot' })
-  ])
-
-  if (errHist) throw errHist
-  if (errEstado) throw errEstado
+// supabase-js não deixa o TypeError bruto do fetch escapar — ele embrulha em
+// { message, details, code } via postgrest-js. Por isso checamos os dois formatos.
+// Exportado porque o replay da fila (syncOffline.js) precisa da mesma checagem.
+export function isErroDeRede(err) {
+  if (err instanceof TypeError) return true
+  const texto = `${err?.message || ''} ${err?.details || ''}`
+  return /failed to fetch|load failed|networkerror|fetch failed/i.test(texto)
 }
 
-export async function registrarEnvioManutencao({ localId, slot, responsavel, equipe, envio, inspecao, conformidade }) {
-  const agora = new Date().toISOString()
-  const isReserva = envio.substituto_origem === 'RESERVA_DEPOSITO' || envio.substituto_origem === 'RESERVA_NOVO'
-
-  const { data: ordem, error: errOrdem } = await supabase
-    .from('ordens_manutencao')
-    .insert({
-      local_id: localId,
-      slot,
-      extintor_saiu_tipo: envio.tipo_saiu,
-      extintor_saiu_kg: envio.kg_saiu,
-      nivel_manutencao: parseInt(envio.nivel_manutencao),
-      substituto_tipo: inspecao.extintor_tipo,
-      substituto_kg: inspecao.extintor_kg,
-      substituto_cap_ext: inspecao.cap_ext_atual,
-      substituto_reserva: isReserva,
-      substituto_origem: envio.substituto_origem,
-      substituto_operacional: inspecao.operacional ?? true,
-      data_saida: agora,
-      responsavel_saida: responsavel,
-      equipe_saida: equipe
-    })
-    .select('id')
-    .single()
-
-  if (errOrdem) throw errOrdem
-
-  const [{ error: errHist }, { error: errEstado }] = await Promise.all([
-    supabase.from('historico_operacoes').insert({
-      modo: 'logistica_envio',
-      local_id: localId,
-      slot,
-      ordem_manutencao_id: ordem.id,
-      data_operacao: agora,
-      responsavel,
-      equipe,
-      payload: { ...inspecao, ...envio }
-    }),
-    supabase.from('local_estado_atual').upsert({
-      local_id: localId,
-      slot,
-      extintor_tipo: inspecao.extintor_tipo,
-      extintor_kg: inspecao.extintor_kg,
-      cap_ext_atual: inspecao.cap_ext_atual,
-      reserva_empresa: isReserva,
-      situacao_conformidade: conformidade,
-      motivo_nao_conformidade: inspecao.motivo_nao_conformidade ?? null,
-      em_manutencao: true,
-      ordem_manutencao_id: ordem.id,
-      validade_nivel2: inspecao.validade_nivel2 ? inspecao.validade_nivel2 + '-01' : null,
-      validade_nivel3: inspecao.validade_nivel3 ? inspecao.validade_nivel3 + '-12-01' : null,
-      data_ultima_logistica: agora,
-      responsavel_ultima_logistica: responsavel,
-      equipe_ultima_logistica: equipe,
-      atualizado_em: agora
-    }, { onConflict: 'local_id,slot' })
-  ])
-
-  if (errHist) throw errHist
-  if (errEstado) throw errEstado
-
-  // Desconto automático do depósito
-  if (envio.substituto_origem === 'SCI' || envio.substituto_origem === 'RESERVA_DEPOSITO') {
-    const categoria = envio.substituto_origem === 'SCI' ? 'SCI' : 'RESERVA'
-    await ajustarEstoqueDeposito({ tipo: inspecao.extintor_tipo, kg: inspecao.extintor_kg, categoria, delta: -1 })
+async function executarOuEnfileirar(tipo, args, execFn) {
+  try {
+    await execFn(args)
+    return { queued: false }
+  } catch (err) {
+    if (isErroDeRede(err)) {
+      await enfileirar(tipo, args)
+      return { queued: true }
+    }
+    throw err
   }
+}
+
+// registrar_inspecao (RPC) grava histórico + estado atual numa única transação
+// no Postgres — nada de passo intermediário visível de fora, então não existe
+// janela onde só uma das duas gravações aconteceu.
+async function _registrarInspecao({ localId, slot, responsavel, equipe, payload, conformidade, clientOpId }) {
+  const { error } = await supabase.rpc('registrar_inspecao', {
+    p_local_id: localId,
+    p_slot: slot,
+    p_responsavel: responsavel,
+    p_equipe: equipe,
+    p_payload: { ...payload, conformidade },
+    p_conformidade: conformidade,
+    p_client_op_id: clientOpId,
+    p_extintor_tipo: payload.extintor_tipo,
+    p_extintor_kg: payload.extintor_kg || null,
+    p_cap_ext_atual: payload.cap_ext_atual || null,
+    p_reserva_empresa: payload.reserva_empresa ?? false,
+    p_motivo_nao_conformidade: payload.motivo_nao_conformidade ?? null,
+    p_observacoes: payload.observacoes ?? null,
+    p_validade_nivel2: payload.validade_nivel2 ? payload.validade_nivel2 + '-01' : null,
+    p_validade_nivel3: payload.validade_nivel3 ? payload.validade_nivel3 + '-12-01' : null
+  })
+  if (error) throw error
+}
+
+export async function registrarInspecao(args) {
+  const clientOpId = args.clientOpId ?? crypto.randomUUID()
+  return executarOuEnfileirar('registrarInspecao', { ...args, clientOpId }, _registrarInspecao)
+}
+
+// registrar_envio_manutencao (RPC) cria a ordem, o histórico, atualiza o
+// estado do local e desconta o depósito numa única transação — o desconto de
+// estoque nunca fica "pendurado" separado da criação da ordem.
+async function _registrarEnvioManutencao({ localId, slot, responsavel, equipe, envio, inspecao, conformidade, clientOpId }) {
+  const isReserva = envio.substituto_origem === 'RESERVA_DEPOSITO' || envio.substituto_origem === 'RESERVA_NOVO'
+  const descontaEstoque = envio.substituto_origem === 'SCI' || envio.substituto_origem === 'RESERVA_DEPOSITO'
+  const categoria = envio.substituto_origem === 'SCI' ? 'SCI' : 'RESERVA'
+
+  const { error } = await supabase.rpc('registrar_envio_manutencao', {
+    p_local_id: localId,
+    p_slot: slot,
+    p_responsavel: responsavel,
+    p_equipe: equipe,
+    p_client_op_id: clientOpId,
+    p_extintor_saiu_tipo: envio.tipo_saiu,
+    p_extintor_saiu_kg: envio.kg_saiu || null,
+    p_nivel_manutencao: parseInt(envio.nivel_manutencao),
+    p_substituto_tipo: inspecao.extintor_tipo,
+    p_substituto_kg: inspecao.extintor_kg || null,
+    p_substituto_cap_ext: inspecao.cap_ext_atual || null,
+    p_substituto_reserva: isReserva,
+    p_substituto_origem: envio.substituto_origem,
+    p_substituto_operacional: inspecao.operacional ?? true,
+    p_payload: { ...inspecao, ...envio },
+    p_conformidade: conformidade,
+    p_motivo_nao_conformidade: inspecao.motivo_nao_conformidade ?? null,
+    p_validade_nivel2: inspecao.validade_nivel2 ? inspecao.validade_nivel2 + '-01' : null,
+    p_validade_nivel3: inspecao.validade_nivel3 ? inspecao.validade_nivel3 + '-12-01' : null,
+    p_desconta_estoque: descontaEstoque,
+    p_estoque_categoria: categoria
+  })
+  if (error) throw error
+}
+
+export async function registrarEnvioManutencao(args) {
+  const clientOpId = args.clientOpId ?? crypto.randomUUID()
+  return executarOuEnfileirar('registrarEnvioManutencao', { ...args, clientOpId }, _registrarEnvioManutencao)
 }
 
 export async function fetchEstoqueDeposito() {
@@ -211,120 +206,71 @@ export async function fetchLocaisComReserva() {
   return data || []
 }
 
-export async function registrarEnvioEstoque({ tipo, kg, nivel, quantidade, responsavel, equipe }) {
-  const agora = new Date().toISOString()
-
-  const inserts = Array.from({ length: quantidade }, () => ({
-    local_id: null,
-    slot: null,
-    extintor_saiu_tipo: tipo,
-    extintor_saiu_kg: parseFloat(kg),
-    nivel_manutencao: parseInt(nivel),
-    substituto_reserva: false,
-    data_saida: agora,
-    responsavel_saida: responsavel,
-    equipe_saida: equipe
-  }))
-
-  const { error } = await supabase.from('ordens_manutencao').insert(inserts)
+// registrar_envio_estoque (RPC): checa o lote e insere as N unidades na mesma
+// transação, sem janela entre o "já existe?" e o insert.
+async function _registrarEnvioEstoque({ tipo, kg, nivel, quantidade, responsavel, equipe, clientOpId }) {
+  const { error } = await supabase.rpc('registrar_envio_estoque', {
+    p_tipo: tipo,
+    p_kg: parseFloat(kg),
+    p_nivel: parseInt(nivel),
+    p_quantidade: quantidade,
+    p_responsavel: responsavel,
+    p_equipe: equipe,
+    p_lote_id: clientOpId
+  })
   if (error) throw error
 }
 
-export async function registrarRecebimentoMassa({ ordens, responsavel, equipe }) {
-  const agora = new Date().toISOString()
+export async function registrarEnvioEstoque(args) {
+  const clientOpId = args.clientOpId ?? crypto.randomUUID()
+  return executarOuEnfileirar('registrarEnvioEstoque', { ...args, clientOpId }, _registrarEnvioEstoque)
+}
 
-  await Promise.all(ordens.map(async (ordem) => {
-    const ops = [
-      supabase.from('ordens_manutencao').update({
-        status: 'CONCLUIDA',
-        data_retorno: agora,
-        responsavel_retorno: responsavel,
-        equipe_retorno: equipe,
-        extintor_retornou_para: 'ESTOQUE'
-      }).eq('id', ordem.id),
-    ]
-
-    // Ordens do estoque (local_id null) não têm local_estado_atual nem historico com local
-    if (ordem.local_id) {
-      ops.push(
-        supabase.from('historico_operacoes').insert({
-          modo: 'logistica_retorno',
-          local_id: ordem.local_id,
-          slot: ordem.slot,
-          ordem_manutencao_id: ordem.id,
-          data_operacao: agora,
-          responsavel,
-          equipe,
-          payload: { destino: 'ESTOQUE' }
-        }),
-        supabase.from('local_estado_atual').update({
-          em_manutencao: false,
-          ordem_manutencao_id: null,
-          atualizado_em: agora
-        }).eq('local_id', ordem.local_id).eq('slot', ordem.slot)
-      )
-    }
-
-    const results = await Promise.all(ops)
-    for (const { error } of results) {
-      if (error) throw error
-    }
+// registrar_recebimento_ordem (RPC): fecha a ordem + histórico + estado do
+// local numa única transação por ordem.
+async function _registrarRecebimentoMassa({ ordens, responsavel, equipe, clientOpIds }) {
+  await Promise.all(ordens.map(async (ordem, i) => {
+    const { error } = await supabase.rpc('registrar_recebimento_ordem', {
+      p_ordem_id: ordem.id,
+      p_responsavel: responsavel,
+      p_equipe: equipe,
+      p_client_op_id: clientOpIds[i],
+      p_local_id: ordem.local_id ?? null,
+      p_slot: ordem.slot ?? null
+    })
+    if (error) throw error
   }))
 }
 
-export async function registrarRetornoManutencao({ localId, slot, responsavel, equipe, ordemId, destino, inspecao, conformidade }) {
-  const agora = new Date().toISOString()
-
-  const [{ error: errOrdem }, { error: errHist }, { error: errEstado }] = await Promise.all([
-    supabase.from('ordens_manutencao').update({
-      status: 'CONCLUIDA',
-      data_retorno: agora,
-      responsavel_retorno: responsavel,
-      equipe_retorno: equipe,
-      extintor_retornou_para: destino
-    }).eq('id', ordemId),
-
-    supabase.from('historico_operacoes').insert({
-      modo: 'logistica_retorno',
-      local_id: localId,
-      slot,
-      ordem_manutencao_id: ordemId,
-      data_operacao: agora,
-      responsavel,
-      equipe,
-      payload: { ...inspecao, destino }
-    }),
-
-    supabase.from('local_estado_atual').upsert({
-      local_id: localId,
-      slot,
-      extintor_tipo: inspecao.extintor_tipo,
-      extintor_kg: inspecao.extintor_kg,
-      cap_ext_atual: inspecao.cap_ext_atual,
-      reserva_empresa: false,
-      situacao_conformidade: conformidade,
-      motivo_nao_conformidade: inspecao.motivo_nao_conformidade ?? null,
-      em_manutencao: false,
-      ordem_manutencao_id: null,
-      validade_nivel2: inspecao.validade_nivel2 ? inspecao.validade_nivel2 + '-01' : null,
-      validade_nivel3: inspecao.validade_nivel3 ? inspecao.validade_nivel3 + '-12-01' : null,
-      data_ultima_logistica: agora,
-      responsavel_ultima_logistica: responsavel,
-      equipe_ultima_logistica: equipe,
-      atualizado_em: agora
-    }, { onConflict: 'local_id,slot' })
-  ])
-
-  if (errOrdem) throw errOrdem
-  if (errHist) throw errHist
-  if (errEstado) throw errEstado
+export async function registrarRecebimentoMassa({ ordens, responsavel, equipe, clientOpIds }) {
+  const ids = clientOpIds ?? ordens.map(() => crypto.randomUUID())
+  return executarOuEnfileirar(
+    'registrarRecebimentoMassa',
+    { ordens, responsavel, equipe, clientOpIds: ids },
+    _registrarRecebimentoMassa
+  )
 }
 
-export async function marcarReserva({ localId, slot, valor }) {
+async function _marcarReserva({ localId, slot, valor }) {
   const { error } = await supabase
     .from('local_estado_atual')
     .upsert({ local_id: localId, slot, reserva_empresa: valor }, { onConflict: 'local_id,slot' })
   if (error) throw error
+}
+
+export async function marcarReserva(args) {
+  return executarOuEnfileirar('marcarReserva', args, _marcarReserva)
+}
+
+// Mapa usado pelo replay da fila offline (src/lib/syncOffline.js) — sempre
+// chama a versão interna (_xxx), nunca o wrapper público, senão um item que
+// falhar de novo por falta de rede voltaria a se enfileirar dentro do próprio replay.
+export const HANDLERS_FILA = {
+  registrarInspecao: _registrarInspecao,
+  registrarEnvioManutencao: _registrarEnvioManutencao,
+  registrarEnvioEstoque: _registrarEnvioEstoque,
+  registrarRecebimentoMassa: _registrarRecebimentoMassa,
+  marcarReserva: _marcarReserva,
 }
 
 export async function verificarSenhaAdmin(senha) {

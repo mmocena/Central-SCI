@@ -55,10 +55,11 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
         operacional: slotData.operacional,
         sinalizacaoOk: slotData.sinalizacao_ok
       })
-      await Promise.all([
+      const resultados = await Promise.all([
         registrarInspecao({ localId: local.id, slot: 'A', responsavel, equipe: dados.slotA.equipe, payload: dados.slotA, conformidade: conf(dados.slotA) }),
         registrarInspecao({ localId: local.id, slot: 'B', responsavel, equipe: dados.slotB.equipe, payload: dados.slotB, conformidade: conf(dados.slotB) })
       ])
+      avisarResultado(resultados.some(r => r.queued))
     } else {
       const conformidade = calcularConformidade({
         capExtOk: local.planta_cap_ext_exigida ? dados.cap_ext_ok : undefined,
@@ -68,7 +69,7 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
         operacional: dados.operacional,
         sinalizacaoOk: dados.sinalizacao_ok
       })
-      await registrarInspecao({
+      const resultado = await registrarInspecao({
         localId: local.id,
         slot: slotAtivo,
         responsavel,
@@ -76,13 +77,20 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
         payload: dados,
         conformidade
       })
+      avisarResultado(resultado.queued)
     }
     if (modoSubstituicao) {
       await marcarReserva({ localId: local.id, slot: slotAtivo, valor: false })
     }
-    showToast('Registrado com sucesso.')
     onAtualizar()
     onClose()
+  }
+
+  function avisarResultado(queued) {
+    showToast(
+      queued ? 'Sem conexão — será enviado automaticamente ao reconectar.' : 'Registrado com sucesso.',
+      queued ? 'aviso' : 'sucesso'
+    )
   }
 
   const plantaLabel = [local.planta_tipo_exigido, local.planta_cap_ext_exigida].filter(Boolean).join(' ')
@@ -178,7 +186,8 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
                 <span className="text-sm font-semibold text-blue-600">RESERVA ✓</span>
                 <button
                   onClick={async () => {
-                    await marcarReserva({ localId: local.id, slot: slotAtivo, valor: false })
+                    const resultado = await marcarReserva({ localId: local.id, slot: slotAtivo, valor: false })
+                    avisarResultado(resultado.queued)
                     setReservaAtiva(false)
                     onAtualizar()
                   }}
@@ -209,7 +218,8 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
           ) : (
             <button
               onClick={async () => {
-                await marcarReserva({ localId: local.id, slot: slotAtivo, valor: true })
+                const resultado = await marcarReserva({ localId: local.id, slot: slotAtivo, valor: true })
+                avisarResultado(resultado.queued)
                 setReservaAtiva(true)
                 onAtualizar()
               }}
@@ -239,7 +249,7 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
                 tipoAtual: inspecao.extintor_tipo,
                 tipoExigido: local.planta_tipo_exigido
               })
-              await registrarEnvioManutencao({
+              const resultado = await registrarEnvioManutencao({
                 localId: local.id,
                 slot: slotAtivo,
                 responsavel,
@@ -248,7 +258,12 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
                 inspecao,
                 conformidade
               })
-              showToast('Envio para manutenção registrado com sucesso.')
+              showToast(
+                resultado.queued
+                  ? 'Sem conexão — será enviado automaticamente ao reconectar.'
+                  : 'Envio para manutenção registrado com sucesso.',
+                resultado.queued ? 'aviso' : 'sucesso'
+              )
               onAtualizar()
               onClose()
             }}

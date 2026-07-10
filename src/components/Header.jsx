@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Link } from 'react-router-dom'
+import { useFilaOffline } from '../lib/offlineQueue'
 
 const MENU_ITEMS = [
   {
@@ -77,10 +78,17 @@ const MENU_ITEMS = [
 
 export default function Header() {
   const [aberto, setAberto] = useState(false)
+  const pendentes = useFilaOffline()
 
   return (
     <>
-      <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 px-4 py-3 flex items-center gap-3 sticky top-0 z-40 shadow-sm">
+      <div className="sticky top-0 z-40">
+        {pendentes > 0 && (
+          <div className="bg-amber-500 text-white text-xs font-medium text-center py-1.5">
+            {pendentes} {pendentes === 1 ? 'operação pendente' : 'operações pendentes'} — será{pendentes === 1 ? '' : 'ão'} enviada{pendentes === 1 ? '' : 's'} ao reconectar
+          </div>
+        )}
+        <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 px-4 py-3 flex items-center gap-3 shadow-sm">
         <Link to="/" className="flex items-center gap-3 flex-1 min-w-0">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-600 to-red-400 flex items-center justify-center shrink-0 shadow-sm">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
@@ -103,7 +111,8 @@ export default function Header() {
           <span className="w-1 h-1 rounded-full bg-slate-500" />
           <span className="w-1 h-1 rounded-full bg-slate-500" />
         </button>
-      </header>
+        </header>
+      </div>
 
       {/* Overlay */}
       {aberto && (
