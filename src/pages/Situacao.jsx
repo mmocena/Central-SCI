@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { supabase } from '../lib/supabase'
 import { fetchLocaisComEstado } from '../lib/queries'
 
 const SITUACAO = {
@@ -53,8 +54,17 @@ export default function Situacao() {
   const [filtroAberto, setFiltroAberto] = useState(false)
 
   useEffect(() => {
-    fetchLocaisComEstado().then(data => { setLocais(data); setLoading(false) })
+    carregar()
+    const channel = supabase
+      .channel('situacao-estado-locais')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'local_estado_atual' }, carregar)
+      .subscribe()
+    return () => supabase.removeChannel(channel)
   }, [])
+
+  function carregar() {
+    fetchLocaisComEstado().then(data => { setLocais(data); setLoading(false) })
+  }
 
   // Flatten: uma linha por slot
   const linhas = locais.flatMap(local => {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { supabase } from '../lib/supabase'
 import { fetchHistoricoInspecoes } from '../lib/queries'
 import { calcularConformidade } from '../lib/conformidade'
 
@@ -42,27 +43,81 @@ function formatData(iso) {
   })
 }
 
+function ultimoDiaDoMes(anoMes) {
+  const [ano, mes] = anoMes.split('-').map(Number)
+  return new Date(ano, mes, 0).getDate()
+}
+
 export default function HistoricoInspecoes() {
   const [historico, setHistorico] = useState([])
   const [loading, setLoading] = useState(true)
+  const [filtroAberto, setFiltroAberto] = useState(false)
+  const [mes, setMes] = useState('')
+  const [inicio, setInicio] = useState('')
+  const [fim, setFim] = useState('')
 
   useEffect(() => {
+    carregar()
+    const channel = supabase
+      .channel('historico-inspecoes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'historico_operacoes' }, carregar)
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [])
+
+  function carregar() {
     fetchHistoricoInspecoes()
       .then(setHistorico)
       .catch(e => console.error(e))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  function aplicarMes(valor) {
+    setMes(valor)
+    if (valor) {
+      setInicio(`${valor}-01`)
+      setFim(`${valor}-${String(ultimoDiaDoMes(valor)).padStart(2, '0')}`)
+    }
+  }
+
+  function limparFiltro() {
+    setMes(''); setInicio(''); setFim('')
+  }
+
+  const filtroAtivo = Boolean(inicio || fim)
+
+  const historicoFiltrado = historico.filter(item => {
+    if (!inicio && !fim) return true
+    const data = new Date(item.data_operacao)
+    if (inicio && data < new Date(`${inicio}T00:00:00`)) return false
+    if (fim && data > new Date(`${fim}T23:59:59`)) return false
+    return true
+  })
 
   if (loading) return <div className="p-4 text-sm text-slate-500">Carregando...</div>
 
   return (
     <div>
 
-      {/* Barra de contagem */}
-      <div className="px-3 pt-3 pb-2">
+      {/* Barra de contagem + filtro */}
+      <div className="px-3 pt-3 pb-2 flex items-center justify-between">
         <p className="text-xs text-sci-muted font-semibold uppercase tracking-wider">
-          {historico.length} inspeç{historico.length === 1 ? 'ão' : 'ões'}
+          {filtroAtivo ? `${historicoFiltrado.length} de ${historico.length}` : historico.length} inspeç{(filtroAtivo ? historicoFiltrado.length : historico.length) === 1 ? 'ão' : 'ões'}
         </p>
+        <button
+          onClick={() => setFiltroAberto(true)}
+          className="flex items-center gap-1.5 btn-option py-1.5 px-3 text-xs"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="4" y1="6" x2="20" y2="6"/>
+            <line x1="8" y1="12" x2="16" y2="12"/>
+            <line x1="11" y1="18" x2="13" y2="18"/>
+          </svg>
+          Filtros
+          {filtroAtivo && (
+            <span className="bg-sci-red text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">1</span>
+          )}
+        </button>
       </div>
 
       {/* Tabela */}
@@ -82,7 +137,7 @@ export default function HistoricoInspecoes() {
             </tr>
           </thead>
           <tbody>
-            {historico.map((item, i) => {
+            {historicoFiltrado.map((item, i) => {
               const local = item.locais
               const p = item.payload || {}
               const sit = SITUACAO[situacaoDoRegistro(item)]
@@ -157,7 +212,63 @@ export default function HistoricoInspecoes() {
         {historico.length === 0 && (
           <div className="text-center py-10 text-slate-400 text-sm">Nenhuma inspeção registrada ainda.</div>
         )}
+        {historico.length > 0 && historicoFiltrado.length === 0 && (
+          <div className="text-center py-10 text-slate-400 text-sm">Nenhuma inspeção nesse período.</div>
+        )}
       </div>
+
+      {/* Bottom sheet de filtro por período */}
+      {filtroAberto && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/30" onClick={() => setFiltroAberto(false)}>
+          <div className="w-full bg-white rounded-t-3xl border-t border-sci-border shadow-xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-sci-text">Filtrar por período</p>
+              <div className="flex items-center gap-3">
+                {filtroAtivo && (
+                  <button onClick={limparFiltro} className="text-xs text-sci-red font-medium">Limpar</button>
+                )}
+                <button onClick={() => setFiltroAberto(false)} className="text-sci-muted text-2xl leading-none">×</button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs text-slate-400 font-medium">Mês</p>
+              <input
+                type="month"
+                value={mes}
+                onChange={e => aplicarMes(e.target.value)}
+                className="w-full"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs text-slate-400 font-medium">Ou período customizado</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-slate-400">Data início</label>
+                  <input
+                    type="date"
+                    value={inicio}
+                    onChange={e => { setMes(''); setInicio(e.target.value) }}
+                    className="w-full mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400">Data término</label>
+                  <input
+                    type="date"
+                    value={fim}
+                    onChange={e => { setMes(''); setFim(e.target.value) }}
+                    className="w-full mt-1"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <button onClick={() => setFiltroAberto(false)} className="btn-primary w-full">Aplicar</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

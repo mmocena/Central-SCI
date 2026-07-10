@@ -6,6 +6,7 @@ import Manutencoes from './pages/Manutencoes'
 import Situacao from './pages/Situacao'
 import HistoricoInspecoes from './pages/HistoricoInspecoes'
 import Deposito from './pages/Deposito'
+import Relatorios from './pages/Relatorios'
 import Admin from './pages/Admin'
 import Header from './components/Header'
 
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="/situacao" element={<Situacao />} />
           <Route path="/historico" element={<HistoricoInspecoes />} />
           <Route path="/deposito" element={<Deposito />} />
+          <Route path="/relatorios" element={<Relatorios />} />
           <Route path="/admin/*" element={<Admin />} />
         </Routes>
       </main>

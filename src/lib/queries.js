@@ -179,7 +179,10 @@ export async function fetchEstoqueDeposito() {
   return data || []
 }
 
-export async function ajustarEstoqueDeposito({ tipo, kg, categoria, operacional = true, delta }) {
+// Incremento/decremento por 1 — se essa chamada for reenviada da fila
+// offline, o pior caso é aplicar o delta 2x (contagem errada por 1 unidade,
+// corrigível na próxima conferência física). Aceitável dado o baixo risco.
+async function _ajustarEstoqueDeposito({ tipo, kg, categoria, operacional = true, delta }) {
   const { data } = await supabase
     .from('estoque_deposito')
     .select('id, quantidade')
@@ -187,12 +190,19 @@ export async function ajustarEstoqueDeposito({ tipo, kg, categoria, operacional 
     .single()
   if (!data) return
   const nova = Math.max(0, data.quantidade + delta)
-  await supabase.from('estoque_deposito')
+  const { error } = await supabase.from('estoque_deposito')
     .update({ quantidade: nova, atualizado_em: new Date().toISOString() })
     .eq('id', data.id)
+  if (error) throw error
 }
 
-export async function upsertItemDeposito({ tipo, kg, categoria, operacional = true }) {
+export async function ajustarEstoqueDeposito(args) {
+  return executarOuEnfileirar('ajustarEstoqueDeposito', args, _ajustarEstoqueDeposito)
+}
+
+// upsert com ignoreDuplicates na chave natural (tipo,kg,categoria,operacional)
+// — reenviar da fila não duplica.
+async function _upsertItemDeposito({ tipo, kg, categoria, operacional = true }) {
   const { error } = await supabase
     .from('estoque_deposito')
     .upsert(
@@ -202,9 +212,18 @@ export async function upsertItemDeposito({ tipo, kg, categoria, operacional = tr
   if (error) throw error
 }
 
-export async function excluirItemDeposito(id) {
+export async function upsertItemDeposito(args) {
+  return executarOuEnfileirar('upsertItemDeposito', args, _upsertItemDeposito)
+}
+
+// delete por id é idempotente — apagar de novo um id já apagado não dá erro.
+async function _excluirItemDeposito(id) {
   const { error } = await supabase.from('estoque_deposito').delete().eq('id', id)
   if (error) throw error
+}
+
+export async function excluirItemDeposito(id) {
+  return executarOuEnfileirar('excluirItemDeposito', id, _excluirItemDeposito)
 }
 
 export async function fetchLocaisComReserva() {
@@ -293,6 +312,47 @@ export const HANDLERS_FILA = {
   registrarEnvioEstoque: _registrarEnvioEstoque,
   registrarRecebimentoMassa: _registrarRecebimentoMassa,
   marcarReserva: _marcarReserva,
+  ajustarEstoqueDeposito: _ajustarEstoqueDeposito,
+  upsertItemDeposito: _upsertItemDeposito,
+  excluirItemDeposito: _excluirItemDeposito,
+  salvarRegistroAdmin: _salvarRegistroAdmin,
+  atualizarCampoAdmin: _atualizarCampoAdmin,
+  excluirRegistroAdmin: _excluirRegistroAdmin,
+}
+
+// ────────────────────────────────────────────────────────────────
+// CRUD genérico do Admin (locais, tipos_extintor, fatores_nao_operacionalidade)
+// — três operações cobrem os 9 pontos de escrita das telas de Admin,
+// todas passando pela mesma fila offline.
+// ────────────────────────────────────────────────────────────────
+
+async function _salvarRegistroAdmin({ tabela, id, payload }) {
+  const { error } = id
+    ? await supabase.from(tabela).update(payload).eq('id', id)
+    : await supabase.from(tabela).insert(payload)
+  if (error) throw error
+}
+
+export async function salvarRegistroAdmin(args) {
+  return executarOuEnfileirar('salvarRegistroAdmin', args, _salvarRegistroAdmin)
+}
+
+async function _atualizarCampoAdmin({ tabela, id, campos }) {
+  const { error } = await supabase.from(tabela).update(campos).eq('id', id)
+  if (error) throw error
+}
+
+export async function atualizarCampoAdmin(args) {
+  return executarOuEnfileirar('atualizarCampoAdmin', args, _atualizarCampoAdmin)
+}
+
+async function _excluirRegistroAdmin({ tabela, id }) {
+  const { error } = await supabase.from(tabela).delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function excluirRegistroAdmin(args) {
+  return executarOuEnfileirar('excluirRegistroAdmin', args, _excluirRegistroAdmin)
 }
 
 export async function verificarSenhaAdmin(senha) {

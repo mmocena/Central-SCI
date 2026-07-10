@@ -24,7 +24,7 @@ export default function Deposito() {
     if (!form.tipo || !form.kg) return
     setSalvando(true)
     try {
-      await upsertItemDeposito({
+      const resultado = await upsertItemDeposito({
         tipo: form.tipo,
         kg: form.kg,
         categoria: form.categoria,
@@ -32,7 +32,10 @@ export default function Deposito() {
       })
       setForm({ tipo: '', kg: '', categoria: 'SCI', operacional: true })
       setFormAberto(false)
-      showToast('Item adicionado ao depósito.')
+      showToast(
+        resultado.queued ? 'Sem conexão — será adicionado automaticamente ao reconectar.' : 'Item adicionado ao depósito.',
+        resultado.queued ? 'aviso' : 'sucesso'
+      )
       await carregar()
     } catch (e) {
       alert('Erro: ' + e.message)
@@ -42,15 +45,27 @@ export default function Deposito() {
   }
 
   async function handleAjustar(item, delta) {
-    await ajustarEstoqueDeposito({ tipo: item.tipo, kg: item.kg, categoria: item.categoria, operacional: item.operacional, delta })
-    await carregar()
+    try {
+      const resultado = await ajustarEstoqueDeposito({ tipo: item.tipo, kg: item.kg, categoria: item.categoria, operacional: item.operacional, delta })
+      if (resultado.queued) showToast('Sem conexão — será aplicado automaticamente ao reconectar.', 'aviso')
+      await carregar()
+    } catch (e) {
+      alert('Erro ao ajustar: ' + e.message)
+    }
   }
 
   async function handleExcluir(id) {
     if (!confirm('Remover este item do depósito?')) return
-    await excluirItemDeposito(id)
-    showToast('Item removido do depósito.')
-    await carregar()
+    try {
+      const resultado = await excluirItemDeposito(id)
+      showToast(
+        resultado.queued ? 'Sem conexão — será removido automaticamente ao reconectar.' : 'Item removido do depósito.',
+        resultado.queued ? 'aviso' : 'sucesso'
+      )
+      await carregar()
+    } catch (e) {
+      alert('Erro ao remover: ' + e.message)
+    }
   }
 
   const sciOk   = estoque.filter(e => e.categoria === 'SCI' && e.operacional === true)

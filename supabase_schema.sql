@@ -28,8 +28,10 @@ create table locais (
   descricao text,
   tem_slot_a boolean default true,
   tem_slot_b boolean default false,
-  planta_tipo_exigido text,         -- ex: CO²
-  planta_cap_ext_exigida text,      -- ex: 5-B:C
+  descricao_slot_a text,             -- identificação do extintor A (dual-slot)
+  descricao_slot_b text,             -- identificação do extintor B (dual-slot)
+  planta_tipo_exigido text,          -- ex: CO²
+  planta_cap_ext_exigida text,       -- ex: 5-B:C
   ativo boolean default true,
   criado_em timestamptz default now()
 );
@@ -78,8 +80,8 @@ create table ordens_manutencao (
   id uuid primary key default gen_random_uuid(),
   status text not null default 'PENDENTE' check (status in ('PENDENTE', 'CONCLUIDA')),
 
-  local_id uuid not null references locais(id),
-  slot char(1) not null check (slot in ('A', 'B')),
+  local_id uuid references locais(id),   -- null = envio direto do estoque (sem local de origem)
+  slot char(1) check (slot in ('A', 'B')),
 
   -- extintor que saiu
   extintor_saiu_tipo text not null,
@@ -91,6 +93,7 @@ create table ordens_manutencao (
   substituto_kg numeric(5,1),
   substituto_cap_ext text,
   substituto_reserva boolean default false,
+  substituto_origem text,          -- 'SCI' | 'RESERVA_DEPOSITO' | 'RESERVA_NOVO'
   substituto_operacional boolean default true,
 
   -- abertura
@@ -109,7 +112,7 @@ create table ordens_manutencao (
   -- fila offline: chave de idempotência gerada no clique, evita duplicar
   -- a ordem se a mesma ação for reenviada automaticamente ao reconectar
   client_op_id uuid unique,
-  lote_id uuid, -- agrupa as N unidades de um envio em lote (envio direto do estoque)
+  lote_id uuid,                    -- agrupa as N unidades de um envio em lote (envio direto do estoque)
   estoque_descontado boolean not null default false
 );
 
@@ -139,32 +142,208 @@ create table historico_operacoes (
   client_op_id uuid unique
 );
 
--- Estoque (1 linha por tipo de extintor)
-create table estoque_estado_atual (
+-- Depósito / estoque de reserva (SCI e RESERVA da empresa), por tipo+kg+categoria+operacionalidade
+create table estoque_deposito (
   id uuid primary key default gen_random_uuid(),
-  tipo_extintor_id uuid not null references tipos_extintor(id),
-  unique (tipo_extintor_id),
-  qtd_operacional int not null default 0,
-  qtd_nao_operacional int not null default 0,
-  data_ultima_verificacao timestamptz,
-  responsavel_ultima_verificacao text,
+  tipo text not null,
+  kg numeric(5,1) not null,
+  categoria text not null check (categoria in ('SCI', 'RESERVA')),
+  operacional boolean not null default true,
+  unique (tipo, kg, categoria, operacional),
+  quantidade int not null default 0,
   atualizado_em timestamptz default now()
 );
 
--- Histórico de verificações de estoque
-create table historico_estoque (
-  id uuid primary key default gen_random_uuid(),
-  data_operacao timestamptz default now(),
-  responsavel text not null,
-  equipe text not null,
-  payload jsonb not null default '{}'
+-- Configurações gerais chave/valor (senha de admin, início do período de vistoria, etc.)
+create table configuracoes (
+  chave text primary key,
+  valor text
 );
 
 -- ============================================================
--- Realtime: habilitar para a tabela de estado atual
+-- Funções (RPC) — cada uma roda em uma única transação, então
+-- nunca fica um passo intermediário gravado sem o resto (ex: ordem
+-- de manutenção criada sem o desconto de estoque correspondente).
+-- Chamadas pela fila offline (src/lib/queries.js) com um client_op_id
+-- gerado no clique, garantindo que reenviar a mesma ação não duplica.
 -- ============================================================
-alter publication supabase_realtime add table local_estado_atual;
-alter publication supabase_realtime add table ordens_manutencao;
+
+create or replace function registrar_inspecao(
+  p_local_id uuid, p_slot char(1), p_responsavel text, p_equipe text,
+  p_payload jsonb, p_conformidade text, p_client_op_id uuid,
+  p_extintor_tipo text, p_extintor_kg numeric, p_cap_ext_atual text,
+  p_reserva_empresa boolean, p_motivo_nao_conformidade text, p_observacoes text,
+  p_validade_nivel2 date, p_validade_nivel3 date
+) returns void
+language plpgsql
+as $$
+begin
+  insert into historico_operacoes (modo, local_id, slot, responsavel, equipe, payload, client_op_id)
+  values ('inspecao', p_local_id, p_slot, p_responsavel, p_equipe, p_payload, p_client_op_id)
+  on conflict (client_op_id) do nothing;
+
+  insert into local_estado_atual (
+    local_id, slot, extintor_tipo, extintor_kg, cap_ext_atual, reserva_empresa,
+    situacao_conformidade, motivo_nao_conformidade, observacoes,
+    validade_nivel2, validade_nivel3, data_ultima_inspecao,
+    responsavel_ultima_inspecao, equipe_ultima_inspecao, atualizado_em
+  ) values (
+    p_local_id, p_slot, p_extintor_tipo, p_extintor_kg, p_cap_ext_atual, coalesce(p_reserva_empresa, false),
+    p_conformidade, p_motivo_nao_conformidade, p_observacoes,
+    p_validade_nivel2, p_validade_nivel3, now(), p_responsavel, p_equipe, now()
+  )
+  on conflict (local_id, slot) do update set
+    extintor_tipo = excluded.extintor_tipo,
+    extintor_kg = excluded.extintor_kg,
+    cap_ext_atual = excluded.cap_ext_atual,
+    reserva_empresa = excluded.reserva_empresa,
+    situacao_conformidade = excluded.situacao_conformidade,
+    motivo_nao_conformidade = excluded.motivo_nao_conformidade,
+    observacoes = excluded.observacoes,
+    validade_nivel2 = excluded.validade_nivel2,
+    validade_nivel3 = excluded.validade_nivel3,
+    data_ultima_inspecao = excluded.data_ultima_inspecao,
+    responsavel_ultima_inspecao = excluded.responsavel_ultima_inspecao,
+    equipe_ultima_inspecao = excluded.equipe_ultima_inspecao,
+    atualizado_em = excluded.atualizado_em;
+end;
+$$;
+
+create or replace function registrar_envio_manutencao(
+  p_local_id uuid, p_slot char(1), p_responsavel text, p_equipe text, p_client_op_id uuid,
+  p_extintor_saiu_tipo text, p_extintor_saiu_kg numeric, p_nivel_manutencao int,
+  p_substituto_tipo text, p_substituto_kg numeric, p_substituto_cap_ext text,
+  p_substituto_reserva boolean, p_substituto_origem text, p_substituto_operacional boolean,
+  p_payload jsonb, p_conformidade text, p_motivo_nao_conformidade text,
+  p_validade_nivel2 date, p_validade_nivel3 date,
+  p_desconta_estoque boolean, p_estoque_categoria text
+) returns uuid
+language plpgsql
+as $$
+declare
+  v_ordem ordens_manutencao%rowtype;
+  v_estoque_id uuid;
+  v_qtd int;
+begin
+  select * into v_ordem from ordens_manutencao where client_op_id = p_client_op_id;
+
+  if v_ordem.id is null then
+    insert into ordens_manutencao (
+      local_id, slot, extintor_saiu_tipo, extintor_saiu_kg, nivel_manutencao,
+      substituto_tipo, substituto_kg, substituto_cap_ext, substituto_reserva,
+      substituto_origem, substituto_operacional, data_saida, responsavel_saida,
+      equipe_saida, client_op_id
+    ) values (
+      p_local_id, p_slot, p_extintor_saiu_tipo, p_extintor_saiu_kg, p_nivel_manutencao,
+      p_substituto_tipo, p_substituto_kg, p_substituto_cap_ext, p_substituto_reserva,
+      p_substituto_origem, p_substituto_operacional, now(), p_responsavel, p_equipe, p_client_op_id
+    )
+    returning * into v_ordem;
+  end if;
+
+  insert into historico_operacoes (modo, local_id, slot, ordem_manutencao_id, responsavel, equipe, payload, client_op_id)
+  values ('logistica_envio', p_local_id, p_slot, v_ordem.id, p_responsavel, p_equipe, p_payload, p_client_op_id)
+  on conflict (client_op_id) do nothing;
+
+  insert into local_estado_atual (
+    local_id, slot, extintor_tipo, extintor_kg, cap_ext_atual, reserva_empresa,
+    situacao_conformidade, motivo_nao_conformidade, em_manutencao, ordem_manutencao_id,
+    validade_nivel2, validade_nivel3, data_ultima_logistica,
+    responsavel_ultima_logistica, equipe_ultima_logistica, atualizado_em
+  ) values (
+    p_local_id, p_slot, p_substituto_tipo, p_substituto_kg, p_substituto_cap_ext, p_substituto_reserva,
+    p_conformidade, p_motivo_nao_conformidade, true, v_ordem.id,
+    p_validade_nivel2, p_validade_nivel3, now(), p_responsavel, p_equipe, now()
+  )
+  on conflict (local_id, slot) do update set
+    extintor_tipo = excluded.extintor_tipo,
+    extintor_kg = excluded.extintor_kg,
+    cap_ext_atual = excluded.cap_ext_atual,
+    reserva_empresa = excluded.reserva_empresa,
+    situacao_conformidade = excluded.situacao_conformidade,
+    motivo_nao_conformidade = excluded.motivo_nao_conformidade,
+    em_manutencao = excluded.em_manutencao,
+    ordem_manutencao_id = excluded.ordem_manutencao_id,
+    validade_nivel2 = excluded.validade_nivel2,
+    validade_nivel3 = excluded.validade_nivel3,
+    data_ultima_logistica = excluded.data_ultima_logistica,
+    responsavel_ultima_logistica = excluded.responsavel_ultima_logistica,
+    equipe_ultima_logistica = excluded.equipe_ultima_logistica,
+    atualizado_em = excluded.atualizado_em;
+
+  if p_desconta_estoque and not v_ordem.estoque_descontado then
+    select id, quantidade into v_estoque_id, v_qtd
+    from estoque_deposito
+    where tipo = p_substituto_tipo and kg = p_substituto_kg
+      and categoria = p_estoque_categoria and operacional = true
+    limit 1;
+
+    if v_estoque_id is not null then
+      update estoque_deposito
+      set quantidade = greatest(0, v_qtd - 1), atualizado_em = now()
+      where id = v_estoque_id;
+    end if;
+
+    update ordens_manutencao set estoque_descontado = true where id = v_ordem.id;
+  end if;
+
+  return v_ordem.id;
+end;
+$$;
+
+create or replace function registrar_envio_estoque(
+  p_tipo text, p_kg numeric, p_nivel int, p_quantidade int,
+  p_responsavel text, p_equipe text, p_lote_id uuid
+) returns void
+language plpgsql
+as $$
+begin
+  if exists (select 1 from ordens_manutencao where lote_id = p_lote_id) then
+    return;
+  end if;
+
+  insert into ordens_manutencao (
+    local_id, slot, extintor_saiu_tipo, extintor_saiu_kg, nivel_manutencao,
+    substituto_reserva, data_saida, responsavel_saida, equipe_saida, lote_id
+  )
+  select null, null, p_tipo, p_kg, p_nivel, false, now(), p_responsavel, p_equipe, p_lote_id
+  from generate_series(1, p_quantidade);
+end;
+$$;
+
+create or replace function registrar_recebimento_ordem(
+  p_ordem_id uuid, p_responsavel text, p_equipe text, p_client_op_id uuid,
+  p_local_id uuid, p_slot char(1)
+) returns void
+language plpgsql
+as $$
+begin
+  update ordens_manutencao set
+    status = 'CONCLUIDA', data_retorno = now(), responsavel_retorno = p_responsavel,
+    equipe_retorno = p_equipe, extintor_retornou_para = 'ESTOQUE'
+  where id = p_ordem_id;
+
+  if p_local_id is not null then
+    insert into historico_operacoes (modo, local_id, slot, ordem_manutencao_id, responsavel, equipe, payload, client_op_id)
+    values ('logistica_retorno', p_local_id, p_slot, p_ordem_id, p_responsavel, p_equipe, jsonb_build_object('destino', 'ESTOQUE'), p_client_op_id)
+    on conflict (client_op_id) do nothing;
+
+    update local_estado_atual set em_manutencao = false, ordem_manutencao_id = null, atualizado_em = now()
+    where local_id = p_local_id and slot = p_slot;
+  end if;
+end;
+$$;
+
+-- ============================================================
+-- Realtime: habilitar para as tabelas que a UI escuta ao vivo via
+-- postgres_changes (Home, Dashboard, Situação, Histórico de Inspeções).
+-- Sem isso na publicação, as telas não atualizam sozinhas quando outro
+-- dispositivo grava algo — cada uma fica presa ao estado do carregamento.
+-- ============================================================
+alter publication supabase_realtime add table if not exists local_estado_atual;
+alter publication supabase_realtime add table if not exists ordens_manutencao;
+alter publication supabase_realtime add table if not exists configuracoes;
+alter publication supabase_realtime add table if not exists historico_operacoes;
 
 -- ============================================================
 -- Dados iniciais de exemplo (remover em produção)

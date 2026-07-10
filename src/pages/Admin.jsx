@@ -1,7 +1,14 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { verificarSenhaAdmin } from '../lib/queries'
+import { verificarSenhaAdmin, salvarRegistroAdmin, atualizarCampoAdmin, excluirRegistroAdmin } from '../lib/queries'
 import { useToast } from '../components/Toast'
+
+function avisarResultado(showToast, resultado, msgSucesso) {
+  showToast(
+    resultado.queued ? 'Sem conexão — será enviado automaticamente ao reconectar.' : msgSucesso,
+    resultado.queued ? 'aviso' : 'sucesso'
+  )
+}
 
 const SESSION_KEY = 'sci_config_auth'
 
@@ -153,12 +160,15 @@ function AdminLocais() {
       planta_tipo_exigido: form.planta_tipo_exigido.trim() || null,
       planta_cap_ext_exigida: form.planta_cap_ext_exigida.trim().toUpperCase() || null
     }
-    const { error } = editandoId
-      ? await supabase.from('locais').update(payload).eq('id', editandoId)
-      : await supabase.from('locais').insert(payload)
+    let resultado
+    try {
+      resultado = await salvarRegistroAdmin({ tabela: 'locais', id: editandoId, payload })
+    } catch (e) {
+      setSalvando(false)
+      return alert('Erro: ' + e.message)
+    }
     setSalvando(false)
-    if (error) return alert('Erro: ' + error.message)
-    showToast(editandoId ? 'Local atualizado com sucesso.' : 'Local cadastrado com sucesso.')
+    avisarResultado(showToast, resultado, editandoId ? 'Local atualizado com sucesso.' : 'Local cadastrado com sucesso.')
     cancelarEdicao()
     await carregar()
   }
@@ -287,6 +297,7 @@ function AdminLocais() {
 }
 
 function AdminTipos() {
+  const showToast = useToast()
   const [tipos, setTipos] = useState([])
   const [arquivados, setArquivados] = useState([])
   const [tipo, setTipo] = useState('')
@@ -304,21 +315,34 @@ function AdminTipos() {
   }
   async function salvar() {
     if (!tipo || !kg) return
-    await supabase.from('tipos_extintor').insert({ tipo: tipo.trim(), kg: parseFloat(kg) })
-    setTipo(''); setKg(''); carregar()
+    try {
+      const resultado = await salvarRegistroAdmin({ tabela: 'tipos_extintor', payload: { tipo: tipo.trim(), kg: parseFloat(kg) } })
+      setTipo(''); setKg('')
+      avisarResultado(showToast, resultado, 'Tipo adicionado.')
+      carregar()
+    } catch (e) { alert('Erro: ' + e.message) }
   }
   async function arquivar(id) {
-    await supabase.from('tipos_extintor').update({ ativo: false }).eq('id', id)
-    carregar()
+    try {
+      const resultado = await atualizarCampoAdmin({ tabela: 'tipos_extintor', id, campos: { ativo: false } })
+      avisarResultado(showToast, resultado, 'Tipo arquivado.')
+      carregar()
+    } catch (e) { alert('Erro: ' + e.message) }
   }
   async function restaurar(id) {
-    await supabase.from('tipos_extintor').update({ ativo: true }).eq('id', id)
-    carregar()
+    try {
+      const resultado = await atualizarCampoAdmin({ tabela: 'tipos_extintor', id, campos: { ativo: true } })
+      avisarResultado(showToast, resultado, 'Tipo restaurado.')
+      carregar()
+    } catch (e) { alert('Erro: ' + e.message) }
   }
   async function excluir(id) {
     if (!confirm('Excluir permanentemente? Esta ação não pode ser desfeita.')) return
-    await supabase.from('tipos_extintor').delete().eq('id', id)
-    carregar()
+    try {
+      const resultado = await excluirRegistroAdmin({ tabela: 'tipos_extintor', id })
+      avisarResultado(showToast, resultado, 'Tipo excluído.')
+      carregar()
+    } catch (e) { alert('Erro: ' + e.message) }
   }
 
   return (
@@ -377,6 +401,7 @@ function AdminTipos() {
 }
 
 function AdminFatores() {
+  const showToast = useToast()
   const [fatores, setFatores] = useState([])
   const [arquivados, setArquivados] = useState([])
   const [descricao, setDescricao] = useState('')
@@ -393,21 +418,34 @@ function AdminFatores() {
   }
   async function salvar() {
     if (!descricao.trim()) return
-    await supabase.from('fatores_nao_operacionalidade').insert({ descricao: descricao.trim(), ordem: fatores.length + 1 })
-    setDescricao(''); carregar()
+    try {
+      const resultado = await salvarRegistroAdmin({ tabela: 'fatores_nao_operacionalidade', payload: { descricao: descricao.trim(), ordem: fatores.length + 1 } })
+      setDescricao('')
+      avisarResultado(showToast, resultado, 'Fator adicionado.')
+      carregar()
+    } catch (e) { alert('Erro: ' + e.message) }
   }
   async function arquivar(id) {
-    await supabase.from('fatores_nao_operacionalidade').update({ ativo: false }).eq('id', id)
-    carregar()
+    try {
+      const resultado = await atualizarCampoAdmin({ tabela: 'fatores_nao_operacionalidade', id, campos: { ativo: false } })
+      avisarResultado(showToast, resultado, 'Fator arquivado.')
+      carregar()
+    } catch (e) { alert('Erro: ' + e.message) }
   }
   async function restaurar(id) {
-    await supabase.from('fatores_nao_operacionalidade').update({ ativo: true }).eq('id', id)
-    carregar()
+    try {
+      const resultado = await atualizarCampoAdmin({ tabela: 'fatores_nao_operacionalidade', id, campos: { ativo: true } })
+      avisarResultado(showToast, resultado, 'Fator restaurado.')
+      carregar()
+    } catch (e) { alert('Erro: ' + e.message) }
   }
   async function excluir(id) {
     if (!confirm('Excluir permanentemente? Esta ação não pode ser desfeita.')) return
-    await supabase.from('fatores_nao_operacionalidade').delete().eq('id', id)
-    carregar()
+    try {
+      const resultado = await excluirRegistroAdmin({ tabela: 'fatores_nao_operacionalidade', id })
+      avisarResultado(showToast, resultado, 'Fator excluído.')
+      carregar()
+    } catch (e) { alert('Erro: ' + e.message) }
   }
 
   return (
