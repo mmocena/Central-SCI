@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useLocation } from 'react-router-dom'
 import { fetchLocaisComReserva, fetchLocaisComVencimento, fetchTiposExtintor, fetchEstoqueDeposito, registrarEnvioEstoque, registrarRecebimentoMassa } from '../lib/queries'
 import { supabase } from '../lib/supabase'
 import IconeExtintor from '../components/IconeExtintor'
@@ -45,6 +46,7 @@ function CardComoUsar({ descricao, texto, aberto, onToggle }) {
 
 export default function Manutencoes() {
   const showToast = useToast()
+  const location = useLocation()
   const [ordens, setOrdens] = useState([])
   const [reservas, setReservas] = useState([])
   const [vencimentos, setVencimentos] = useState([])
@@ -60,7 +62,7 @@ export default function Manutencoes() {
   const [registrando, setRegistrando] = useState(false)
   const [localAberto, setLocalAberto] = useState(null)
   const [envioPreAberto, setEnvioPreAberto] = useState(false)
-  const [abaAtiva, setAbaAtiva] = useState('envio')
+  const [abaAtiva, setAbaAtiva] = useState(location.state?.aba || 'recebimento')
   const [filtroEdif, setFiltroEdif] = useState('')
   const [filtroEdifEnvio, setFiltroEdifEnvio] = useState('')
   const [selecionadosReserva, setSelecionadosReserva] = useState(new Set())
@@ -155,8 +157,8 @@ export default function Manutencoes() {
   const algumSelecionado = selecionados.size > 0
 
   const ABAS = [
+    { id: 'recebimento', label: 'Em manutenção', badge: ordens.length },
     { id: 'envio', label: 'Envio', badge: vencimentos.length },
-    { id: 'recebimento', label: 'Recebimento', badge: ordens.length },
     { id: 'substituicao', label: 'Substituir RESERVAS', badge: reservas.length },
   ]
 

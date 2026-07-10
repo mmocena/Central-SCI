@@ -9,7 +9,7 @@ export default {
       colors: {
         sci: {
           red: '#dc2626',
-          vistoriado: 'rgb(52, 145, 30)',
+          vistoriado: '#34911e',
           bg: '#f1f5f9',
           card: '#ffffff',
           border: '#e2e8f0',
