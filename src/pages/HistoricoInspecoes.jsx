@@ -148,7 +148,9 @@ export default function HistoricoInspecoes() {
                   {/* Nº */}
                   <td className={`sticky left-0 ${rowBg} px-3 py-2 z-10 font-bold text-sci-red`}>
                     {local ? String(local.numero).padStart(2, '0') : '—'}
-                    {item.slot && <span className="text-slate-400 font-normal ml-0.5">{item.slot}</span>}
+                    {local?.tem_slot_a && local?.tem_slot_b && item.slot && (
+                      <span className="text-slate-400 font-normal ml-0.5">{item.slot}</span>
+                    )}
                   </td>
 
                   {/* Local */}

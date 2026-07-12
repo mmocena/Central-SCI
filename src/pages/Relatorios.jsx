@@ -62,7 +62,13 @@ const COLUNAS_SITUACAO = [
 ]
 
 const COLUNAS_HISTORICO = [
-  { key: 'numero', label: 'Nº', get: item => item.locais ? String(item.locais.numero).padStart(2, '0') + (item.slot || '') : '—' },
+  {
+    key: 'numero', label: 'Nº', get: item => {
+      if (!item.locais) return '—'
+      const temDoisSlots = item.locais.tem_slot_a && item.locais.tem_slot_b
+      return String(item.locais.numero).padStart(2, '0') + (temDoisSlots ? item.slot : '')
+    }
+  },
   { key: 'local', label: 'Local', get: item => item.locais?.edificacao || 'Local removido' },
   { key: 'tipo_kg', label: 'Tipo/kg', get: item => item.payload?.extintor_tipo ? `${item.payload.extintor_tipo} ${item.payload.extintor_kg || ''}kg` : '—' },
   { key: 'situacao', label: 'Situação', get: item => SITUACAO_LABEL[situacaoDoRegistroHistorico(item)] || '—' },

@@ -40,7 +40,7 @@ export async function fetchFatoresNaoOperacionalidade() {
 export async function fetchHistoricoInspecoes() {
   const { data, error } = await supabase
     .from('historico_operacoes')
-    .select('*, locais(numero, edificacao, descricao, planta_tipo_exigido, planta_cap_ext_exigida)')
+    .select('*, locais(numero, edificacao, descricao, planta_tipo_exigido, planta_cap_ext_exigida, tem_slot_a, tem_slot_b)')
     .eq('modo', 'inspecao')
     .order('data_operacao', { ascending: false })
 
