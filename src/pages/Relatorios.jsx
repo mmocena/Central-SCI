@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import {
-  fetchLocaisComEstado, fetchLocaisComVencimento, fetchInicioPeriodoInspecao, fetchHistoricoInspecoes
+  fetchLocaisComEstado, fetchLocaisComVencimento, fetchInicioPeriodoInspecao, fetchHistoricoInspecoes, fetchTiposExtintor
 } from '../lib/queries'
 import { calcularConformidade } from '../lib/conformidade'
+import { unidadeDoTipo } from '../lib/formato'
 import { useToast } from '../components/Toast'
 
 const SITUACAO_LABEL = { conforme: 'Conforme', alerta: 'Alerta', nao_conforme: 'Não Conforme' }
@@ -125,22 +126,27 @@ function CabecalhoSelecao({ titulo, total, ativos, onTodos, onNenhum }) {
 }
 
 // Definição das colunas disponíveis por tabela — cada uma sabe extrair seu
-// próprio valor da linha, usado tanto na UI de seleção quanto no PDF.
-const COLUNAS_SITUACAO = [
-  { key: 'numero', label: 'Nº', get: ({ local, slot }) => String(local.numero).padStart(2, '0') + (local.tem_slot_a && local.tem_slot_b ? slot : '') },
-  { key: 'local', label: 'Local', get: ({ local }) => local.edificacao },
-  { key: 'planta', label: 'Planta', get: ({ local }) => [local.planta_tipo_exigido, local.planta_cap_ext_exigida].filter(Boolean).join(' ') || '—' },
-  { key: 'tipo_kg', label: 'Tipo/kg', get: ({ estado }) => estado.extintor_tipo ? `${estado.extintor_tipo} ${estado.extintor_kg || ''}kg` : '—' },
-  { key: 'validade_n2', label: 'Val. N2', get: ({ estado }) => formatN2(estado.validade_nivel2) },
-  { key: 'validade_n3', label: 'Val. N3', get: ({ estado }) => formatN3(estado.validade_nivel3) },
-  { key: 'situacao', label: 'Situação', get: ({ estado }) => estado.situacao_conformidade ? SITUACAO_LABEL[estado.situacao_conformidade] : '—' },
-  { key: 'nao_conformidade', label: 'Não Conformidade', get: ({ estado }) => estado.motivo_nao_conformidade || '—' },
-  { key: 'observacoes', label: 'Observações', get: ({ estado }) => estado.observacoes || '—' },
-  { key: 'status', label: 'Status', get: ({ estado }) => [estado.em_manutencao && 'Manutenção', estado.reserva_empresa && 'RESERVA'].filter(Boolean).join(', ') || '—' },
-  { key: 'data', label: 'Última Inspeção', get: ({ estado }) => formatDataHora(estado.data_ultima_inspecao) },
-]
+// próprio valor da linha, usado tanto na UI de seleção quanto no PDF. São
+// fábricas (recebem tiposExtintor) porque a unidade (kg/L) depende do
+// catálogo de tipos, carregado em tempo de execução.
+function criarColunasSituacao(tiposExtintor) {
+  return [
+    { key: 'numero', label: 'Nº', get: ({ local, slot }) => String(local.numero).padStart(2, '0') + (local.tem_slot_a && local.tem_slot_b ? slot : '') },
+    { key: 'local', label: 'Local', get: ({ local }) => local.edificacao },
+    { key: 'planta', label: 'Planta', get: ({ local }) => [local.planta_tipo_exigido, local.planta_cap_ext_exigida].filter(Boolean).join(' ') || '—' },
+    { key: 'tipo_kg', label: 'Tipo/kg', get: ({ estado }) => estado.extintor_tipo ? `${estado.extintor_tipo} ${estado.extintor_kg || ''}${unidadeDoTipo(estado.extintor_tipo, tiposExtintor)}` : '—' },
+    { key: 'validade_n2', label: 'Val. N2', get: ({ estado }) => formatN2(estado.validade_nivel2) },
+    { key: 'validade_n3', label: 'Val. N3', get: ({ estado }) => formatN3(estado.validade_nivel3) },
+    { key: 'situacao', label: 'Situação', get: ({ estado }) => estado.situacao_conformidade ? SITUACAO_LABEL[estado.situacao_conformidade] : '—' },
+    { key: 'nao_conformidade', label: 'Não Conformidade', get: ({ estado }) => estado.motivo_nao_conformidade || '—' },
+    { key: 'observacoes', label: 'Observações', get: ({ estado }) => estado.observacoes || '—' },
+    { key: 'status', label: 'Status', get: ({ estado }) => [estado.em_manutencao && 'Manutenção', estado.reserva_empresa && 'RESERVA'].filter(Boolean).join(', ') || '—' },
+    { key: 'data', label: 'Última Inspeção', get: ({ estado }) => formatDataHora(estado.data_ultima_inspecao) },
+  ]
+}
 
-const COLUNAS_HISTORICO = [
+function criarColunasHistorico(tiposExtintor) {
+  return [
   {
     key: 'numero', label: 'Nº', get: item => {
       if (!item.locais) return '—'
@@ -149,14 +155,15 @@ const COLUNAS_HISTORICO = [
     }
   },
   { key: 'local', label: 'Local', get: item => item.locais?.edificacao || 'Local removido' },
-  { key: 'tipo_kg', label: 'Tipo/kg', get: item => item.payload?.extintor_tipo ? `${item.payload.extintor_tipo} ${item.payload.extintor_kg || ''}kg` : '—' },
+  { key: 'tipo_kg', label: 'Tipo/kg', get: item => item.payload?.extintor_tipo ? `${item.payload.extintor_tipo} ${item.payload.extintor_kg || ''}${unidadeDoTipo(item.payload.extintor_tipo, tiposExtintor)}` : '—' },
   { key: 'situacao', label: 'Situação', get: item => SITUACAO_LABEL[situacaoDoRegistroHistorico(item)] || '—' },
   { key: 'nao_conformidade', label: 'Não Conformidade', get: item => item.payload?.motivo_nao_conformidade || '—' },
   { key: 'observacoes', label: 'Observações', get: item => item.payload?.observacoes || '—' },
   { key: 'equipe', label: 'Equipe', get: item => item.equipe },
   { key: 'responsavel', label: 'Responsável', get: item => item.responsavel },
   { key: 'data', label: 'Data', get: item => formatDataHora(item.data_operacao) },
-]
+  ]
+}
 
 export default function Relatorios() {
   const showToast = useToast()
@@ -164,6 +171,7 @@ export default function Relatorios() {
   const [vencimentos, setVencimentos] = useState([])
   const [inicioPeriodo, setInicioPeriodo] = useState(null)
   const [historico, setHistorico] = useState([])
+  const [tiposExtintor, setTiposExtintor] = useState([])
   const [loading, setLoading] = useState(true)
   const [gerando, setGerando] = useState(false)
 
@@ -181,15 +189,20 @@ export default function Relatorios() {
       fetchLocaisComEstado(),
       fetchLocaisComVencimento(),
       fetchInicioPeriodoInspecao(),
-      fetchHistoricoInspecoes()
-    ]).then(([locaisData, vencData, periodo, historicoData]) => {
+      fetchHistoricoInspecoes(),
+      fetchTiposExtintor()
+    ]).then(([locaisData, vencData, periodo, historicoData, tiposData]) => {
       setLocais(locaisData)
       setVencimentos(vencData)
       setInicioPeriodo(periodo)
       setHistorico(historicoData)
+      setTiposExtintor(tiposData)
     }).catch(e => console.error(e))
       .finally(() => setLoading(false))
   }, [])
+
+  const COLUNAS_SITUACAO = criarColunasSituacao(tiposExtintor)
+  const COLUNAS_HISTORICO = criarColunasHistorico(tiposExtintor)
 
   const linhas = locais.flatMap(local => {
     const slots = local.local_estado_atual || []

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fetchLocaisComEstado, fetchLocaisComVencimento, fetchInicioPeriodoInspecao } from '../lib/queries'
+import { fetchLocaisComEstado, fetchLocaisComVencimento, fetchInicioPeriodoInspecao, fetchTiposExtintor } from '../lib/queries'
 import ModalDetalhesLocal from '../components/ModalDetalhesLocal'
 import ModalListaExtintores from '../components/ModalListaExtintores'
 
@@ -58,6 +58,7 @@ export default function Dashboard() {
   const [locais, setLocais] = useState([])
   const [vencimentos, setVencimentos] = useState([])
   const [inicioPeriodo, setInicioPeriodo] = useState(null)
+  const [tiposExtintor, setTiposExtintor] = useState([])
   const [loading, setLoading] = useState(true)
   const [detalheAberto, setDetalheAberto] = useState(null)
   const [listaAberta, setListaAberta] = useState(null)
@@ -74,14 +75,16 @@ export default function Dashboard() {
 
   async function carregar() {
     try {
-      const [locaisData, vencData, periodo] = await Promise.all([
+      const [locaisData, vencData, periodo, tiposData] = await Promise.all([
         fetchLocaisComEstado(),
         fetchLocaisComVencimento(),
-        fetchInicioPeriodoInspecao()
+        fetchInicioPeriodoInspecao(),
+        fetchTiposExtintor()
       ])
       setLocais(locaisData)
       setVencimentos(vencData)
       setInicioPeriodo(periodo)
+      setTiposExtintor(tiposData)
     } catch (e) {
       console.error(e)
     } finally {
@@ -230,6 +233,7 @@ export default function Dashboard() {
           local={detalheAberto.local}
           slot={detalheAberto.slot}
           estado={detalheAberto.estado}
+          tiposExtintor={tiposExtintor}
           onClose={() => setDetalheAberto(null)}
         />
       )}

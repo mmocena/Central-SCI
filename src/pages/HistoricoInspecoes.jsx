@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchHistoricoInspecoes } from '../lib/queries'
+import { fetchHistoricoInspecoes, fetchTiposExtintor } from '../lib/queries'
 import { calcularConformidade } from '../lib/conformidade'
+import { unidadeDoTipo } from '../lib/formato'
 
 const SITUACAO = {
   conforme:     { label: 'Conforme',     cls: 'text-green-700 bg-green-50 border-green-200' },
@@ -55,9 +56,11 @@ export default function HistoricoInspecoes() {
   const [mes, setMes] = useState('')
   const [inicio, setInicio] = useState('')
   const [fim, setFim] = useState('')
+  const [tiposExtintor, setTiposExtintor] = useState([])
 
   useEffect(() => {
     carregar()
+    fetchTiposExtintor().then(setTiposExtintor).catch(console.error)
     const channel = supabase
       .channel('historico-inspecoes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'historico_operacoes' }, carregar)
@@ -166,7 +169,7 @@ export default function HistoricoInspecoes() {
                     {p.extintor_tipo ? (
                       <span className={`inline-flex flex-col items-center px-2 py-0.5 rounded font-medium leading-tight ${corTipo(p.extintor_tipo)}`}>
                         <span className="whitespace-nowrap">{p.extintor_tipo}</span>
-                        {p.extintor_kg && <span className="whitespace-nowrap">{p.extintor_kg}kg</span>}
+                        {p.extintor_kg && <span className="whitespace-nowrap">{p.extintor_kg}{unidadeDoTipo(p.extintor_tipo, tiposExtintor)}</span>}
                       </span>
                     ) : <span className="text-slate-300 italic">—</span>}
                   </td>

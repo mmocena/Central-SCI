@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchLocaisComEstado, fetchInicioPeriodoInspecao, resetarPeriodoInspecao } from '../lib/queries'
+import { fetchLocaisComEstado, fetchInicioPeriodoInspecao, resetarPeriodoInspecao, fetchTiposExtintor } from '../lib/queries'
 import LocalCard from '../components/LocalCard'
 import ModalLocal from '../components/ModalLocal'
 import { useToast } from '../components/Toast'
@@ -20,10 +20,12 @@ export default function Home() {
   const [inicioPeriodo, setInicioPeriodo] = useState(null)
   const [resetAberto, setResetAberto] = useState(false)
   const [resetando, setResetando] = useState(false)
+  const [tiposExtintor, setTiposExtintor] = useState([])
 
   useEffect(() => {
     carregarLocais()
     carregarPeriodo()
+    fetchTiposExtintor().then(setTiposExtintor).catch(console.error)
     const channel = supabase
       .channel('estado-locais')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'local_estado_atual' }, carregarLocais)
@@ -243,6 +245,7 @@ export default function Home() {
             key={local.id}
             local={local}
             inicioPeriodo={inicioPeriodo}
+            tiposExtintor={tiposExtintor}
             onClick={() => {
               if (!nomeSalvo) {
                 setDestacarNome(true)

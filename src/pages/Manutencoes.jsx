@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
 import { fetchLocaisComReserva, fetchLocaisComVencimento, fetchTiposExtintor, fetchEstoqueDeposito, registrarEnvioEstoque, registrarRecebimentoMassa } from '../lib/queries'
+import { unidadeDoTipo } from '../lib/formato'
 import { supabase } from '../lib/supabase'
 import IconeExtintor from '../components/IconeExtintor'
 import ModalLocal from '../components/ModalLocal'
@@ -146,7 +147,7 @@ export default function Manutencoes() {
   }
 
   const grupos = ordens.reduce((acc, o) => {
-    const chave = `${o.extintor_saiu_tipo} ${o.extintor_saiu_kg}kg`
+    const chave = `${o.extintor_saiu_tipo} ${o.extintor_saiu_kg}${unidadeDoTipo(o.extintor_saiu_tipo, tiposExtintor)}`
     if (!acc[chave]) acc[chave] = []
     acc[chave].push(o)
     return acc
@@ -339,7 +340,7 @@ export default function Manutencoes() {
                         onClick={() => setFormEstoque(f => ({ ...f, tipo: t.tipo, kg: t.kg }))}
                         className={`btn-option text-xs ${sel ? 'selected' : ''}`}
                       >
-                        {t.tipo} {t.kg}kg
+                        {t.tipo} {t.kg}{t.unidade || 'kg'}
                       </button>
                     )
                   })}
@@ -534,7 +535,7 @@ export default function Manutencoes() {
                           </p>
                           {o.locais && (
                             <p className={`text-xs mt-0.5 ${sel ? 'text-slate-400' : 'text-slate-400'}`}>
-                              Substituto: {o.substituto_tipo} {o.substituto_kg}kg
+                              Substituto: {o.substituto_tipo} {o.substituto_kg}{unidadeDoTipo(o.substituto_tipo, tiposExtintor)}
                               {o.substituto_reserva
                                 ? <span className="text-blue-400 font-medium"> · RESERVA</span>
                                 : ' · Estoque SCI'
@@ -696,7 +697,7 @@ export default function Manutencoes() {
             {estoqueReserva.map(item => (
               <div key={item.id} className="bg-blue-50 border border-blue-200 rounded-2xl flex items-center gap-3 px-4 py-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-blue-800">{item.tipo} {item.kg}kg</p>
+                  <p className="text-sm font-semibold text-blue-800">{item.tipo} {item.kg}{unidadeDoTipo(item.tipo, tiposExtintor)}</p>
                   <p className="text-xs text-blue-500">{item.quantidade} unidade{item.quantidade !== 1 ? 's' : ''} no depósito</p>
                 </div>
               </div>

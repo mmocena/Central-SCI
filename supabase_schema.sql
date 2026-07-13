@@ -8,6 +8,7 @@ create table tipos_extintor (
   id uuid primary key default gen_random_uuid(),
   tipo text not null,          -- ex: CO², PQS BC, PQS ABC, Água
   kg numeric(5,1) not null,    -- ex: 4.0, 6.0, 12.0
+  unidade text not null default 'kg' check (unidade in ('kg', 'L')),
   ativo boolean default true,
   criado_em timestamptz default now()
 );

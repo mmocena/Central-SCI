@@ -42,7 +42,7 @@ export default function FormEnvioManutencao({
           <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-xs space-y-1">
             <p className="font-semibold text-blue-800">Extintor enviado para manutenção:</p>
             <p className="text-blue-700">
-              {tipoSaiuLabel ? `${tipoSaiuLabel.tipo} ${tipoSaiuLabel.kg}kg` : '—'}
+              {tipoSaiuLabel ? `${tipoSaiuLabel.tipo} ${tipoSaiuLabel.kg}${tipoSaiuLabel.unidade || 'kg'}` : '—'}
               {' · '}Nível {envio.nivel_manutencao}
               {' · '}Substituto: <strong>{{
                 'SCI': 'SCI (depósito)',
@@ -82,7 +82,7 @@ export default function FormEnvioManutencao({
         {tipoSaiuLabel ? (
           <div className="flex items-center gap-2">
             <span className="btn-option selected text-sm py-1.5 px-3">
-              {tipoSaiuLabel.tipo} {tipoSaiuLabel.kg}kg
+              {tipoSaiuLabel.tipo} {tipoSaiuLabel.kg}{tipoSaiuLabel.unidade || 'kg'}
             </span>
             <button
               onClick={() => { setE('tipo_saiu', ''); setE('kg_saiu', '') }}
@@ -99,7 +99,7 @@ export default function FormEnvioManutencao({
                 onClick={() => { setE('tipo_saiu', t.tipo); setE('kg_saiu', t.kg) }}
                 className="btn-option text-xs"
               >
-                {t.tipo} {t.kg}kg
+                {t.tipo} {t.kg}{t.unidade || 'kg'}
               </button>
             ))}
           </div>

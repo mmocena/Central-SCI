@@ -302,6 +302,7 @@ function AdminTipos() {
   const [arquivados, setArquivados] = useState([])
   const [tipo, setTipo] = useState('')
   const [kg, setKg] = useState('')
+  const [unidade, setUnidade] = useState('kg')
   const [verArquivados, setVerArquivados] = useState(false)
 
   useEffect(() => { carregar() }, [])
@@ -316,8 +317,8 @@ function AdminTipos() {
   async function salvar() {
     if (!tipo || !kg) return
     try {
-      const resultado = await salvarRegistroAdmin({ tabela: 'tipos_extintor', payload: { tipo: tipo.trim(), kg: parseFloat(kg) } })
-      setTipo(''); setKg('')
+      const resultado = await salvarRegistroAdmin({ tabela: 'tipos_extintor', payload: { tipo: tipo.trim(), kg: parseFloat(kg), unidade } })
+      setTipo(''); setKg(''); setUnidade('kg')
       avisarResultado(showToast, resultado, 'Tipo adicionado.')
       carregar()
     } catch (e) { alert('Erro: ' + e.message) }
@@ -356,7 +357,18 @@ function AdminTipos() {
               {[...new Set(tipos.map(t => t.tipo))].sort().map(t => <option key={t} value={t} />)}
             </datalist>
           </div>
-          <input type="number" value={kg} onChange={e => setKg(e.target.value)} placeholder="kg (ex: 6)" />
+          <input type="number" value={kg} onChange={e => setKg(e.target.value)} placeholder="Capacidade (ex: 6)" />
+        </div>
+        <div className="flex gap-2">
+          {['kg', 'L'].map(u => (
+            <button
+              key={u}
+              onClick={() => setUnidade(u)}
+              className={`btn-option flex-1 text-sm ${unidade === u ? 'selected' : ''}`}
+            >
+              {u}
+            </button>
+          ))}
         </div>
         <button onClick={salvar} className="btn-primary w-full">Adicionar</button>
       </div>
@@ -364,7 +376,7 @@ function AdminTipos() {
       <div className="space-y-2">
         {tipos.map(t => (
           <div key={t.id} className="card flex items-center justify-between gap-2 py-2.5">
-            <span className="text-sm text-slate-700">{t.tipo} — {t.kg}kg</span>
+            <span className="text-sm text-slate-700">{t.tipo} — {t.kg}{t.unidade || 'kg'}</span>
             <div className="flex gap-3 shrink-0">
               <button onClick={() => arquivar(t.id)} className="text-xs text-slate-400 hover:text-amber-600 transition-colors">Arquivar</button>
               <button onClick={() => excluir(t.id)} className="text-xs text-slate-400 hover:text-red-600 transition-colors">Excluir</button>
@@ -385,7 +397,7 @@ function AdminTipos() {
             <div className="space-y-2 mt-2">
               {arquivados.map(t => (
                 <div key={t.id} className="card flex items-center justify-between gap-2 py-2.5 opacity-50">
-                  <span className="text-sm text-slate-500 line-through">{t.tipo} — {t.kg}kg</span>
+                  <span className="text-sm text-slate-500 line-through">{t.tipo} — {t.kg}{t.unidade || 'kg'}</span>
                   <div className="flex gap-3 shrink-0">
                     <button onClick={() => restaurar(t.id)} className="text-xs text-blue-500 hover:text-blue-700 transition-colors no-underline">Restaurar</button>
                     <button onClick={() => excluir(t.id)} className="text-xs text-slate-400 hover:text-red-600 transition-colors">Excluir</button>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchLocaisComEstado } from '../lib/queries'
+import { fetchLocaisComEstado, fetchTiposExtintor } from '../lib/queries'
+import { unidadeDoTipo } from '../lib/formato'
 
 const SITUACAO = {
   conforme:     { label: 'Conforme',     cls: 'text-green-700 bg-green-50 border-green-200' },
@@ -52,9 +53,11 @@ export default function Situacao() {
   const [loading, setLoading] = useState(true)
   const [filtroSit, setFiltroSit] = useState('todos')
   const [filtroAberto, setFiltroAberto] = useState(false)
+  const [tiposExtintor, setTiposExtintor] = useState([])
 
   useEffect(() => {
     carregar()
+    fetchTiposExtintor().then(setTiposExtintor).catch(console.error)
     const channel = supabase
       .channel('situacao-estado-locais')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'local_estado_atual' }, carregar)
@@ -176,7 +179,7 @@ export default function Situacao() {
                     {estado.extintor_tipo ? (
                       <span className={`inline-flex flex-col items-center px-2 py-0.5 rounded font-medium leading-tight ${corTipo(estado.extintor_tipo)}`}>
                         <span className="whitespace-nowrap">{estado.extintor_tipo}</span>
-                        {estado.extintor_kg && <span className="whitespace-nowrap">{estado.extintor_kg}kg</span>}
+                        {estado.extintor_kg && <span className="whitespace-nowrap">{estado.extintor_kg}{unidadeDoTipo(estado.extintor_tipo, tiposExtintor)}</span>}
                       </span>
                     ) : <span className="text-slate-300 italic">—</span>}
                   </td>

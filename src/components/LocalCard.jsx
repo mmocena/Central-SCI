@@ -1,4 +1,5 @@
 import IconeExtintor from './IconeExtintor'
+import { unidadeDoTipo } from '../lib/formato'
 
 const SITUACAO = {
   conforme:     { cor: 'text-green-600', bg: 'bg-green-50 border-green-200',  label: 'Conforme' },
@@ -26,7 +27,7 @@ function formatarData(iso) {
     ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function LocalCard({ local, onClick, inicioPeriodo }) {
+export default function LocalCard({ local, onClick, inicioPeriodo, tiposExtintor }) {
   const slots = local.local_estado_atual || []
   const temDoisSlots = local.tem_slot_a && local.tem_slot_b
   const temManutencao = slots.some(s => s.em_manutencao)
@@ -109,7 +110,7 @@ export default function LocalCard({ local, onClick, inicioPeriodo }) {
                   )}
                   {estado?.extintor_tipo ? (
                     <span className={`font-medium px-1.5 py-0.5 rounded border ${tipoCor.text} ${tipoCor.bg} ${tipoCor.border}`}>
-                      {estado.extintor_tipo} {estado.extintor_kg}kg
+                      {estado.extintor_tipo} {estado.extintor_kg}{unidadeDoTipo(estado.extintor_tipo, tiposExtintor)}
                     </span>
                   ) : null}
                   {sitSlot && (

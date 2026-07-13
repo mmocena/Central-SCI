@@ -44,7 +44,7 @@ function SlotBlock({ label, descricao, tiposExtintor, fatores, anosN3, form, set
       {/* Tipo/kg */}
       <CampoColapsavel
         label="Tipo/kg:"
-        valor={tipoKgSel ? `${tipoKgSel.tipo} ${tipoKgSel.kg}kg` : ''}
+        valor={tipoKgSel ? `${tipoKgSel.tipo} ${tipoKgSel.kg}${tipoKgSel.unidade || 'kg'}` : ''}
         aberto={editando[`tipokg_${sk}`]}
         onTrocar={() => setEditando(e => ({ ...e, [`tipokg_${sk}`]: true }))}
       >
@@ -54,7 +54,7 @@ function SlotBlock({ label, descricao, tiposExtintor, fatores, anosN3, form, set
               set(`tipo_${sk}`, t.tipo); set(`kg_${sk}`, t.kg)
               setEditando(e => ({ ...e, [`tipokg_${sk}`]: false }))
             }} className="btn-option text-xs">
-              {t.tipo} {t.kg}kg
+              {t.tipo} {t.kg}{t.unidade || 'kg'}
             </button>
           ))}
         </div>
@@ -210,6 +210,7 @@ export default function FormInspecao({
   // ── Submit single-slot ──
   async function handleSubmit() {
     if (!form.equipe) return alert('Selecione a equipe.')
+    if (local.planta_cap_ext_exigida && form.cap_ext_ok === null) return alert('Informe a Capacidade Extintora.')
     if (form.operacional === null) return alert('Informe o resultado da inspeção.')
     if (form.sinalizacao_ok === null) return alert('Informe a situação da sinalização.')
 
@@ -403,7 +404,7 @@ export default function FormInspecao({
       {/* 2. Tipo/kg */}
       <CampoColapsavel
         label="2. Tipo/kg do extintor:"
-        valor={tipoKgSelecionado ? `${tipoKgSelecionado.tipo} ${tipoKgSelecionado.kg}kg` : ''}
+        valor={tipoKgSelecionado ? `${tipoKgSelecionado.tipo} ${tipoKgSelecionado.kg}${tipoKgSelecionado.unidade || 'kg'}` : ''}
         aberto={editando.tipokg}
         onTrocar={() => setEditando(e => ({ ...e, tipokg: true }))}
       >
@@ -412,7 +413,7 @@ export default function FormInspecao({
             <button key={t.id}
               onClick={() => { set('extintor_tipo', t.tipo); set('extintor_kg', t.kg); setEditando(e => ({ ...e, tipokg: false })) }}
               className="btn-option text-xs">
-              {t.tipo} {t.kg}kg
+              {t.tipo} {t.kg}{t.unidade || 'kg'}
             </button>
           ))}
         </div>

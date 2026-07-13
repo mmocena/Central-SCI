@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { fetchEstoqueDeposito, fetchTiposExtintor, ajustarEstoqueDeposito, upsertItemDeposito, excluirItemDeposito } from '../lib/queries'
+import { fetchEstoqueDeposito, fetchTiposExtintor, ajustarEstoqueDeposito, upsertItemDeposito, excluirItemDeposito, salvarRegistroAdmin } from '../lib/queries'
+import { unidadeDoTipo } from '../lib/formato'
 import { useToast } from '../components/Toast'
 
 export default function Deposito() {
@@ -10,6 +11,9 @@ export default function Deposito() {
   const [formAberto, setFormAberto] = useState(false)
   const [form, setForm] = useState({ tipo: '', kg: '', categoria: 'SCI', operacional: true })
   const [salvando, setSalvando] = useState(false)
+  const [modalTipoAberto, setModalTipoAberto] = useState(false)
+  const [novoTipo, setNovoTipo] = useState({ tipo: '', kg: '', unidade: 'kg' })
+  const [salvandoTipo, setSalvandoTipo] = useState(false)
 
   const carregar = useCallback(async () => {
     const [estoqueData, tiposData] = await Promise.all([fetchEstoqueDeposito(), fetchTiposExtintor()])
@@ -41,6 +45,29 @@ export default function Deposito() {
       alert('Erro: ' + e.message)
     } finally {
       setSalvando(false)
+    }
+  }
+
+  async function handleAdicionarTipo() {
+    if (!novoTipo.tipo.trim() || !novoTipo.kg) return
+    setSalvandoTipo(true)
+    try {
+      const resultado = await salvarRegistroAdmin({
+        tabela: 'tipos_extintor',
+        payload: { tipo: novoTipo.tipo.trim(), kg: parseFloat(novoTipo.kg), unidade: novoTipo.unidade }
+      })
+      showToast(
+        resultado.queued ? 'Sem conexão — será adicionado automaticamente ao reconectar.' : 'Tipo adicionado.',
+        resultado.queued ? 'aviso' : 'sucesso'
+      )
+      setForm(f => ({ ...f, tipo: novoTipo.tipo.trim(), kg: String(novoTipo.kg) }))
+      setNovoTipo({ tipo: '', kg: '', unidade: 'kg' })
+      setModalTipoAberto(false)
+      await carregar()
+    } catch (e) {
+      alert('Erro: ' + e.message)
+    } finally {
+      setSalvandoTipo(false)
     }
   }
 
@@ -119,27 +146,30 @@ export default function Deposito() {
 
             {/* Tipo / kg */}
             <div className="grid grid-cols-2 gap-2">
-              <div>
-                <input
-                  type="text"
-                  list="dl-dep-tipo"
+              <div className="flex gap-1.5">
+                <select
                   value={form.tipo}
-                  onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}
-                  placeholder="Tipo (ex: CO²)"
-                  className="w-full"
-                />
-                <datalist id="dl-dep-tipo">
-                  {[...new Set(tipos.map(t => t.tipo))].sort().map(t => <option key={t} value={t} />)}
-                </datalist>
+                  onChange={e => setForm(f => ({ ...f, tipo: e.target.value, kg: '' }))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">Tipo</option>
+                  {[...new Set(tipos.map(t => t.tipo))].sort().map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setModalTipoAberto(true)}
+                  className="shrink-0 w-9 h-9 rounded-lg border border-slate-200 text-slate-500 text-lg flex items-center justify-center hover:bg-slate-50"
+                  aria-label="Adicionar novo tipo"
+                >+</button>
               </div>
               <select
                 value={form.kg}
                 onChange={e => setForm(f => ({ ...f, kg: e.target.value }))}
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
               >
-                <option value="">kg</option>
+                <option value="">Capacidade</option>
                 {[...new Set(tipos.filter(t => !form.tipo || t.tipo === form.tipo).map(t => t.kg))].sort((a, b) => a - b).map(kg => (
-                  <option key={kg} value={kg}>{kg}kg</option>
+                  <option key={kg} value={kg}>{kg}{unidadeDoTipo(form.tipo, tipos)}</option>
                 ))}
               </select>
             </div>
@@ -163,6 +193,7 @@ export default function Deposito() {
         itens={sciOk}
         onAjustar={handleAjustar}
         onExcluir={handleExcluir}
+        tiposExtintor={tipos}
         vazio="Nenhum extintor SCI operacional no depósito."
       />
 
@@ -174,6 +205,7 @@ export default function Deposito() {
         itens={sciNok}
         onAjustar={handleAjustar}
         onExcluir={handleExcluir}
+        tiposExtintor={tipos}
         vazio="Nenhum extintor SCI não operacional no depósito."
       />
 
@@ -185,13 +217,71 @@ export default function Deposito() {
         itens={reserva}
         onAjustar={handleAjustar}
         onExcluir={handleExcluir}
+        tiposExtintor={tipos}
         vazio="Nenhum extintor RESERVA no depósito."
       />
+
+      {/* Modal — novo tipo de extintor */}
+      {modalTipoAberto && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/40 p-4" onClick={() => !salvandoTipo && setModalTipoAberto(false)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-sci-text">Novo tipo de extintor</p>
+              <button onClick={() => setModalTipoAberto(false)} className="text-sci-muted text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100">×</button>
+            </div>
+
+            <div>
+              <label className="text-xs text-slate-400">Tipo</label>
+              <input
+                type="text"
+                value={novoTipo.tipo}
+                onChange={e => setNovoTipo(f => ({ ...f, tipo: e.target.value }))}
+                placeholder="ex: CO²"
+                autoFocus
+                className="w-full mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400">Capacidade</label>
+              <input
+                type="number"
+                value={novoTipo.kg}
+                onChange={e => setNovoTipo(f => ({ ...f, kg: e.target.value }))}
+                placeholder="ex: 6"
+                className="w-full mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400">Unidade</label>
+              <div className="flex gap-2 mt-1">
+                {['kg', 'L'].map(u => (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => setNovoTipo(f => ({ ...f, unidade: u }))}
+                    className={`btn-option flex-1 text-sm ${novoTipo.unidade === u ? 'selected' : ''}`}
+                  >
+                    {u}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={handleAdicionarTipo}
+              disabled={!novoTipo.tipo.trim() || !novoTipo.kg || salvandoTipo}
+              className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {salvandoTipo ? 'Adicionando...' : 'Adicionar'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function Secao({ titulo, indicador, itens, onAjustar, onExcluir, vazio }) {
+function Secao({ titulo, indicador, itens, onAjustar, onExcluir, vazio, tiposExtintor }) {
   return (
     <div className="space-y-2">
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1 flex items-center gap-2">
@@ -202,7 +292,7 @@ function Secao({ titulo, indicador, itens, onAjustar, onExcluir, vazio }) {
       ) : itens.map(item => (
         <div key={item.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3 px-4 py-3">
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-sci-text">{item.tipo} {item.kg}kg</p>
+            <p className="text-sm font-semibold text-sci-text">{item.tipo} {item.kg}{unidadeDoTipo(item.tipo, tiposExtintor)}</p>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">

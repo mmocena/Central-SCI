@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom'
+import { unidadeDoTipo } from '../lib/formato'
 
 const SITUACAO = {
   conforme:     { label: 'Conforme',     cls: 'text-green-700 bg-green-50 border-green-200' },
@@ -31,7 +32,7 @@ function Campo({ label, children }) {
   )
 }
 
-export default function ModalDetalhesLocal({ local, slot, estado, onClose }) {
+export default function ModalDetalhesLocal({ local, slot, estado, onClose, tiposExtintor }) {
   const temDois = local.tem_slot_a && local.tem_slot_b
   const descSlot = local[`descricao_slot_${slot.toLowerCase()}`]
   const sit = estado.situacao_conformidade ? SITUACAO[estado.situacao_conformidade] : null
@@ -71,7 +72,7 @@ export default function ModalDetalhesLocal({ local, slot, estado, onClose }) {
           <div className="grid grid-cols-2 gap-3">
             <Campo label="Planta exigida">{plantaLabel || null}</Campo>
             <Campo label="Tipo/kg atual">
-              {estado.extintor_tipo ? `${estado.extintor_tipo}${estado.extintor_kg ? ` ${estado.extintor_kg}kg` : ''}` : null}
+              {estado.extintor_tipo ? `${estado.extintor_tipo}${estado.extintor_kg ? ` ${estado.extintor_kg}${unidadeDoTipo(estado.extintor_tipo, tiposExtintor)}` : ''}` : null}
             </Campo>
             <Campo label="Validade N2">{formatN2(estado.validade_nivel2)}</Campo>
             <Campo label="Validade N3">{formatN3(estado.validade_nivel3)}</Campo>
