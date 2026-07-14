@@ -37,6 +37,28 @@ function corTipo(tipo) {
   return tipo ? (COR_TIPO[tipo.toLowerCase()] ?? 'text-slate-700 bg-sci-red') : ''
 }
 
+function formatN2(val) {
+  if (!val) return null
+  const [y, m] = val.split('-')
+  return `${m}/${y.slice(2)}`
+}
+
+function formatN3(val) {
+  if (!val) return null
+  return val.split('-')[0]
+}
+
+function validadeClasse(dateStr) {
+  if (!dateStr) return 'text-slate-300'
+  const d = new Date(dateStr)
+  const hoje = new Date()
+  const diffMs = d - hoje
+  const diffDias = diffMs / (1000 * 60 * 60 * 24)
+  if (diffDias < 0) return 'text-red-600 font-semibold'
+  if (diffDias < 90) return 'text-amber-600 font-semibold'
+  return 'text-slate-600'
+}
+
 function formatData(iso) {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('pt-BR', {
@@ -125,18 +147,22 @@ export default function HistoricoInspecoes() {
 
       {/* Tabela */}
       <div className="overflow-x-auto">
-        <table className="w-full text-xs border-collapse" style={{ minWidth: 720 }}>
+        <table className="w-full text-xs border-collapse" style={{ minWidth: 900 }}>
           <thead className="sticky top-0 z-30">
             <tr className="bg-sci-red text-white font-semibold uppercase tracking-wide whitespace-nowrap">
               <th className="sticky left-0 bg-sci-red text-left px-3 py-2 border-b border-slate-200 z-[31] w-10">Nº</th>
               <th className="bg-sci-red text-left px-3 py-2 border-b border-slate-200 min-w-[160px]">Local</th>
+              <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Planta</th>
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Tipo/kg</th>
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Situação</th>
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Não Conformidade</th>
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200 min-w-[160px]">Observações</th>
+              <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Val. N2</th>
+              <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Val. N3</th>
+              <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Status</th>
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Equipe</th>
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Responsável</th>
-              <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Data</th>
+              <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Data/Hora</th>
             </tr>
           </thead>
           <tbody>
@@ -162,6 +188,16 @@ export default function HistoricoInspecoes() {
                     {local?.descricao && (
                       <p className="text-slate-400 leading-tight">{local.descricao}</p>
                     )}
+                  </td>
+
+                  {/* Planta */}
+                  <td className="px-3 py-2 text-center">
+                    {(local?.planta_tipo_exigido || local?.planta_cap_ext_exigida) ? (
+                      <span className={`inline-flex flex-col items-center px-2 py-0.5 rounded font-medium leading-tight ${corTipo(local.planta_tipo_exigido)}`}>
+                        {local.planta_tipo_exigido && <span className="whitespace-nowrap">{local.planta_tipo_exigido}</span>}
+                        {local.planta_cap_ext_exigida && <span className="whitespace-nowrap">{local.planta_cap_ext_exigida}</span>}
+                      </span>
+                    ) : <span className="text-slate-300">—</span>}
                   </td>
 
                   {/* Tipo/kg */}
@@ -193,6 +229,23 @@ export default function HistoricoInspecoes() {
                     {p.observacoes || <span className="text-slate-300">—</span>}
                   </td>
 
+                  {/* Val. N2 */}
+                  <td className={`px-3 py-2 text-center ${validadeClasse(p.validade_nivel2)}`}>
+                    {formatN2(p.validade_nivel2) || <span className="text-slate-300">—</span>}
+                  </td>
+
+                  {/* Val. N3 */}
+                  <td className={`px-3 py-2 text-center ${validadeClasse(p.validade_nivel3)}`}>
+                    {formatN3(p.validade_nivel3) || <span className="text-slate-300">—</span>}
+                  </td>
+
+                  {/* Status */}
+                  <td className="px-3 py-2 text-center">
+                    {p.reserva_empresa && (
+                      <span className="text-blue-600 bg-blue-50 border border-blue-200 px-1.5 rounded">RESERVA</span>
+                    )}
+                  </td>
+
                   {/* Equipe */}
                   <td className="px-3 py-2 text-center text-slate-600">
                     {item.equipe}
@@ -203,7 +256,7 @@ export default function HistoricoInspecoes() {
                     {item.responsavel}
                   </td>
 
-                  {/* Data */}
+                  {/* Data/Hora */}
                   <td className="px-3 py-2 text-center text-slate-600 whitespace-nowrap">
                     {formatData(item.data_operacao)}
                   </td>

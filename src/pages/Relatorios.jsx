@@ -135,13 +135,15 @@ function criarColunasSituacao(tiposExtintor) {
     { key: 'local', label: 'Local', get: ({ local }) => local.edificacao },
     { key: 'planta', label: 'Planta', get: ({ local }) => [local.planta_tipo_exigido, local.planta_cap_ext_exigida].filter(Boolean).join(' ') || '—' },
     { key: 'tipo_kg', label: 'Tipo/kg', get: ({ estado }) => estado.extintor_tipo ? `${estado.extintor_tipo} ${estado.extintor_kg || ''}${unidadeDoTipo(estado.extintor_tipo, tiposExtintor)}` : '—' },
-    { key: 'validade_n2', label: 'Val. N2', get: ({ estado }) => formatN2(estado.validade_nivel2) },
-    { key: 'validade_n3', label: 'Val. N3', get: ({ estado }) => formatN3(estado.validade_nivel3) },
     { key: 'situacao', label: 'Situação', get: ({ estado }) => estado.situacao_conformidade ? SITUACAO_LABEL[estado.situacao_conformidade] : '—' },
     { key: 'nao_conformidade', label: 'Não Conformidade', get: ({ estado }) => estado.motivo_nao_conformidade || '—' },
     { key: 'observacoes', label: 'Observações', get: ({ estado }) => estado.observacoes || '—' },
+    { key: 'validade_n2', label: 'Val. N2', get: ({ estado }) => formatN2(estado.validade_nivel2) },
+    { key: 'validade_n3', label: 'Val. N3', get: ({ estado }) => formatN3(estado.validade_nivel3) },
     { key: 'status', label: 'Status', get: ({ estado }) => [estado.em_manutencao && 'Manutenção', estado.reserva_empresa && 'RESERVA'].filter(Boolean).join(', ') || '—' },
-    { key: 'data', label: 'Última Inspeção', get: ({ estado }) => formatDataHora(estado.data_ultima_inspecao) },
+    { key: 'equipe', label: 'Equipe', get: ({ estado }) => estado.equipe_ultima_inspecao || '—' },
+    { key: 'responsavel', label: 'Responsável', get: ({ estado }) => estado.responsavel_ultima_inspecao || '—' },
+    { key: 'data', label: 'Data/Hora', get: ({ estado }) => formatDataHora(estado.data_ultima_inspecao) },
   ]
 }
 
@@ -155,13 +157,17 @@ function criarColunasHistorico(tiposExtintor) {
     }
   },
   { key: 'local', label: 'Local', get: item => item.locais?.edificacao || 'Local removido' },
+  { key: 'planta', label: 'Planta', get: item => [item.locais?.planta_tipo_exigido, item.locais?.planta_cap_ext_exigida].filter(Boolean).join(' ') || '—' },
   { key: 'tipo_kg', label: 'Tipo/kg', get: item => item.payload?.extintor_tipo ? `${item.payload.extintor_tipo} ${item.payload.extintor_kg || ''}${unidadeDoTipo(item.payload.extintor_tipo, tiposExtintor)}` : '—' },
   { key: 'situacao', label: 'Situação', get: item => SITUACAO_LABEL[situacaoDoRegistroHistorico(item)] || '—' },
   { key: 'nao_conformidade', label: 'Não Conformidade', get: item => item.payload?.motivo_nao_conformidade || '—' },
   { key: 'observacoes', label: 'Observações', get: item => item.payload?.observacoes || '—' },
+  { key: 'validade_n2', label: 'Val. N2', get: item => formatN2(item.payload?.validade_nivel2) },
+  { key: 'validade_n3', label: 'Val. N3', get: item => formatN3(item.payload?.validade_nivel3) },
+  { key: 'status', label: 'Status', get: item => item.payload?.reserva_empresa ? 'RESERVA' : '—' },
   { key: 'equipe', label: 'Equipe', get: item => item.equipe },
   { key: 'responsavel', label: 'Responsável', get: item => item.responsavel },
-  { key: 'data', label: 'Data', get: item => formatDataHora(item.data_operacao) },
+  { key: 'data', label: 'Data/Hora', get: item => formatDataHora(item.data_operacao) },
   ]
 }
 

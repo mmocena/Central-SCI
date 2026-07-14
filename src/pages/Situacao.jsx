@@ -45,7 +45,7 @@ function validadeClasse(dateStr) {
 
 function formatDataInsp(iso) {
   if (!iso) return null
-  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+  return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 export default function Situacao() {
@@ -125,20 +125,22 @@ export default function Situacao() {
 
       {/* Tabela */}
       <div className="overflow-x-auto">
-        <table className="w-full text-xs border-collapse" style={{ minWidth: 640 }}>
+        <table className="w-full text-xs border-collapse" style={{ minWidth: 900 }}>
           <thead className="sticky top-0 z-30">
             <tr className="bg-sci-red text-white font-semibold uppercase tracking-wide whitespace-nowrap">
               <th className="sticky left-0 bg-sci-red text-left px-3 py-2 border-b border-slate-200 z-[31] w-10">Nº</th>
               <th className="bg-sci-red text-left px-3 py-2 border-b border-slate-200 min-w-[160px]">Local</th>
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Planta</th>
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Tipo/kg</th>
-              <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Val. N2</th>
-              <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Val. N3</th>
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Situação</th>
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Não Conformidade</th>
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200 min-w-[160px]">Observações</th>
+              <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Val. N2</th>
+              <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Val. N3</th>
               <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Status</th>
-              <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Data</th>
+              <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Equipe</th>
+              <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Responsável</th>
+              <th className="bg-sci-red text-center px-3 py-2 border-b border-slate-200">Data/Hora</th>
             </tr>
           </thead>
           <tbody>
@@ -184,16 +186,6 @@ export default function Situacao() {
                     ) : <span className="text-slate-300 italic">—</span>}
                   </td>
 
-                  {/* Val. N2 */}
-                  <td className={`px-3 py-2 text-center ${validadeClasse(estado.validade_nivel2)}`}>
-                    {formatN2(estado.validade_nivel2) || <span className="text-slate-300">—</span>}
-                  </td>
-
-                  {/* Val. N3 */}
-                  <td className={`px-3 py-2 text-center ${validadeClasse(estado.validade_nivel3)}`}>
-                    {formatN3(estado.validade_nivel3) || <span className="text-slate-300">—</span>}
-                  </td>
-
                   {/* Situação */}
                   <td className="px-3 py-2 text-center whitespace-nowrap">
                     {sit ? (
@@ -213,6 +205,16 @@ export default function Situacao() {
                     {estado.observacoes || <span className="text-slate-300">—</span>}
                   </td>
 
+                  {/* Val. N2 */}
+                  <td className={`px-3 py-2 text-center ${validadeClasse(estado.validade_nivel2)}`}>
+                    {formatN2(estado.validade_nivel2) || <span className="text-slate-300">—</span>}
+                  </td>
+
+                  {/* Val. N3 */}
+                  <td className={`px-3 py-2 text-center ${validadeClasse(estado.validade_nivel3)}`}>
+                    {formatN3(estado.validade_nivel3) || <span className="text-slate-300">—</span>}
+                  </td>
+
                   {/* Status */}
                   <td className="px-3 py-2 text-center">
                     <div className="flex items-center justify-center gap-1 flex-wrap">
@@ -225,14 +227,19 @@ export default function Situacao() {
                     </div>
                   </td>
 
-                  {/* Última inspeção */}
-                  <td className="px-3 py-2 text-center">
-                    {estado.data_ultima_inspecao ? (
-                      <>
-                        <p className="text-slate-600">{formatDataInsp(estado.data_ultima_inspecao)}</p>
-                        <p className="text-slate-400">{estado.responsavel_ultima_inspecao}</p>
-                      </>
-                    ) : <span className="text-slate-300 italic">Não inspecionado</span>}
+                  {/* Equipe */}
+                  <td className="px-3 py-2 text-center text-slate-600">
+                    {estado.equipe_ultima_inspecao || <span className="text-slate-300">—</span>}
+                  </td>
+
+                  {/* Responsável */}
+                  <td className="px-3 py-2 text-center text-slate-600">
+                    {estado.responsavel_ultima_inspecao || <span className="text-slate-300">—</span>}
+                  </td>
+
+                  {/* Data/Hora */}
+                  <td className="px-3 py-2 text-center text-slate-600 whitespace-nowrap">
+                    {formatDataInsp(estado.data_ultima_inspecao) || <span className="text-slate-300 italic">Não inspecionado</span>}
                   </td>
 
                 </tr>
