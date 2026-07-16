@@ -7,6 +7,7 @@ import Situacao from './pages/Situacao'
 import HistoricoInspecoes from './pages/HistoricoInspecoes'
 import Deposito from './pages/Deposito'
 import Relatorios from './pages/Relatorios'
+import NaoConformidades from './pages/NaoConformidades'
 import Admin from './pages/Admin'
 import Header from './components/Header'
 
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/historico" element={<HistoricoInspecoes />} />
           <Route path="/deposito" element={<Deposito />} />
           <Route path="/relatorios" element={<Relatorios />} />
+          <Route path="/nao-conformidades" element={<NaoConformidades />} />
           <Route path="/admin/*" element={<Admin />} />
         </Routes>
       </main>

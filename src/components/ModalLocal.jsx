@@ -53,7 +53,9 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
         tipoAtual: slotData.extintor_tipo,
         tipoExigido: local.planta_tipo_exigido,
         operacional: slotData.operacional,
-        sinalizacaoOk: slotData.sinalizacao_ok
+        sinalizacaoOk: slotData.sinalizacao_ok,
+        validadeNivel2: slotData.validade_nivel2,
+        validadeNivel3: slotData.validade_nivel3
       })
       const resultados = await Promise.all([
         registrarInspecao({ localId: local.id, slot: 'A', responsavel, equipe: dados.slotA.equipe, payload: dados.slotA, conformidade: conf(dados.slotA) }),
@@ -67,7 +69,9 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
         tipoAtual: dados.extintor_tipo,
         tipoExigido: local.planta_tipo_exigido,
         operacional: dados.operacional,
-        sinalizacaoOk: dados.sinalizacao_ok
+        sinalizacaoOk: dados.sinalizacao_ok,
+        validadeNivel2: dados.validade_nivel2,
+        validadeNivel3: dados.validade_nivel3
       })
       const resultado = await registrarInspecao({
         localId: local.id,
@@ -247,7 +251,9 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
                 capExtAtual: inspecao.cap_ext_atual,
                 capExtExigida: local.planta_cap_ext_exigida,
                 tipoAtual: inspecao.extintor_tipo,
-                tipoExigido: local.planta_tipo_exigido
+                tipoExigido: local.planta_tipo_exigido,
+                validadeNivel2: inspecao.validade_nivel2,
+                validadeNivel3: inspecao.validade_nivel3
               })
               const resultado = await registrarEnvioManutencao({
                 localId: local.id,

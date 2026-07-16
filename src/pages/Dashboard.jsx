@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fetchLocaisComEstado, fetchLocaisComVencimento, fetchInicioPeriodoInspecao, fetchTiposExtintor } from '../lib/queries'
+import { fetchLocaisComEstado, fetchInicioPeriodoInspecao, fetchTiposExtintor } from '../lib/queries'
 import ModalDetalhesLocal from '../components/ModalDetalhesLocal'
 import ModalListaExtintores from '../components/ModalListaExtintores'
 
@@ -16,6 +16,30 @@ function Stat({ label, valor, cls = 'text-sci-text', onClick }) {
       <p className="text-[11px] text-slate-500 leading-tight">{label}</p>
     </Tag>
   )
+}
+
+// Card de conformidade — o card inteiro é clicável; o rótulo no canto
+// superior direito é só a indicação visual da ação (não é um botão à parte).
+function CardConformidade({ label, valor, cls = 'text-sci-text', rotulo, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex flex-col items-start gap-1 p-3 rounded-2xl border border-slate-200 bg-white shadow-sm text-left active:scale-[0.98] transition-transform"
+    >
+      <div className="w-full flex items-start justify-between gap-2">
+        <p className={`text-2xl font-bold leading-none ${cls}`}>{valor}</p>
+        <span className="shrink-0 text-[10px] font-semibold px-2 py-1 rounded-lg border border-slate-200 text-slate-500 bg-slate-50">
+          {rotulo}
+        </span>
+      </div>
+      <p className="text-[11px] text-slate-500 leading-tight">{label}</p>
+    </button>
+  )
+}
+
+function diasAte(dateStr) {
+  if (!dateStr) return null
+  return (new Date(dateStr) - new Date()) / (1000 * 60 * 60 * 24)
 }
 
 function CardVistoria({ total, vistoriados, naoVistoriados, onVerTotal, onVerVistoriados, onVerNaoVistoriados }) {
@@ -56,7 +80,6 @@ function CardVistoria({ total, vistoriados, naoVistoriados, onVerTotal, onVerVis
 export default function Dashboard() {
   const navigate = useNavigate()
   const [locais, setLocais] = useState([])
-  const [vencimentos, setVencimentos] = useState([])
   const [inicioPeriodo, setInicioPeriodo] = useState(null)
   const [tiposExtintor, setTiposExtintor] = useState([])
   const [loading, setLoading] = useState(true)
@@ -75,14 +98,12 @@ export default function Dashboard() {
 
   async function carregar() {
     try {
-      const [locaisData, vencData, periodo, tiposData] = await Promise.all([
+      const [locaisData, periodo, tiposData] = await Promise.all([
         fetchLocaisComEstado(),
-        fetchLocaisComVencimento(),
         fetchInicioPeriodoInspecao(),
         fetchTiposExtintor()
       ])
       setLocais(locaisData)
-      setVencimentos(vencData)
       setInicioPeriodo(periodo)
       setTiposExtintor(tiposData)
     } catch (e) {
@@ -112,11 +133,22 @@ export default function Dashboard() {
   const linhasReserva = linhas.filter(l => l.estado.reserva_empresa)
   const emManutencao = linhas.filter(l => l.estado.em_manutencao).length
 
-  // Vencimentos vêm num formato próprio (local + array de vencimentos) — mapeia
-  // pra linha correspondente já carregada, reaproveitando o estado completo.
-  const linhasVencendo = vencimentos.flatMap(v =>
-    v.vencimentos.map(venc => linhas.find(l => l.local.id === v.id && l.slot === venc.slot)).filter(Boolean)
-  )
+  // "Vencendo em breve": N2 nos próximos 90 dias (mesmo limiar usado nas
+  // tabelas de Situação/Histórico) e N3 dentro do ano vigente. Extintor em
+  // manutenção não conta — a validade dele só volta a importar quando retorna.
+  const anoAtual = String(new Date().getFullYear())
+  const linhasVencendoN2 = linhas.filter(l => {
+    if (l.estado.em_manutencao) return false
+    const dias = diasAte(l.estado.validade_nivel2)
+    return dias !== null && dias < 90
+  })
+  const linhasVencendoN3 = linhas.filter(l => {
+    if (l.estado.em_manutencao) return false
+    return l.estado.validade_nivel3 && l.estado.validade_nivel3.startsWith(anoAtual)
+  })
+  const vencendoEmBreveUnico = new Set(
+    [...linhasVencendoN2, ...linhasVencendoN3].map(l => `${l.local.id}-${l.slot}`)
+  ).size
 
   const total = linhas.length
   const vistoriados = linhasVistoriadas.length
@@ -128,6 +160,10 @@ export default function Dashboard() {
 
   function abrirLista(titulo, linhasFiltradas, cor) {
     setListaAberta({ titulo, linhas: linhasFiltradas, cor })
+  }
+
+  function abrirListaGrupos(titulo, grupos, cor) {
+    setListaAberta({ titulo, grupos, cor })
   }
 
   return (
@@ -150,15 +186,37 @@ export default function Dashboard() {
       <div className="space-y-3">
         <p className="text-xs text-sci-muted font-semibold uppercase tracking-wider">Conformidade</p>
         <div className="grid grid-cols-3 gap-3">
-          <Stat label="Conforme" valor={linhasConforme.length} cls="text-green-600" onClick={() => abrirLista('Conforme', linhasConforme, 'verde')} />
-          <Stat label="Alerta" valor={linhasAlerta.length} cls="text-amber-600" onClick={() => abrirLista('Alerta', linhasAlerta, 'ambar')} />
-          <Stat label="Não conforme" valor={linhasNaoConforme.length} cls="text-sci-red" onClick={() => abrirLista('Não conforme', linhasNaoConforme, 'vermelho')} />
+          <CardConformidade
+            label="Conforme"
+            valor={linhasConforme.length}
+            cls="text-green-600"
+            rotulo="Ver"
+            onClick={() => abrirLista('Conforme', linhasConforme, 'verde')}
+          />
+          <CardConformidade
+            label="Não conforme"
+            valor={linhasNaoConforme.length}
+            cls="text-sci-red"
+            rotulo="Gerenciar"
+            onClick={() => navigate('/nao-conformidades')}
+          />
+          <CardConformidade
+            label="Alerta"
+            valor={linhasAlerta.length}
+            cls="text-amber-600"
+            rotulo="Ver"
+            onClick={() => abrirLista('Alerta', linhasAlerta, 'ambar')}
+          />
         </div>
-        <Stat
-          label="Vencendo este ano"
-          valor={linhasVencendo.length}
-          cls={linhasVencendo.length > 0 ? 'text-amber-600' : 'text-sci-text'}
-          onClick={() => abrirLista('Vencendo este ano', linhasVencendo, 'ambar')}
+        <CardConformidade
+          label="Vencendo em breve"
+          valor={vencendoEmBreveUnico}
+          cls={vencendoEmBreveUnico > 0 ? 'text-amber-600' : 'text-sci-text'}
+          rotulo="Ver"
+          onClick={() => abrirListaGrupos('Vencendo em breve', [
+            { titulo: 'Validade N2 — próximos 90 dias', linhas: linhasVencendoN2 },
+            { titulo: 'Validade N3 — este ano', linhas: linhasVencendoN3 },
+          ], 'ambar')}
         />
       </div>
 
@@ -222,6 +280,7 @@ export default function Dashboard() {
         <ModalListaExtintores
           titulo={listaAberta.titulo}
           linhas={listaAberta.linhas}
+          grupos={listaAberta.grupos}
           cor={listaAberta.cor}
           onClose={() => setListaAberta(null)}
           onSelecionar={item => setDetalheAberto(item)}

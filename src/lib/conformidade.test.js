@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcularConformidade, motivosNaoConformidade, textoObservacaoAutomatica } from './conformidade'
+import { calcularConformidade, motivosNaoConformidade, textoObservacaoAutomatica, separarMotivos, n2Vencida, n3Vencida } from './conformidade'
 
 describe('calcularConformidade', () => {
   it('não operacional é sempre não conforme, mesmo com tudo mais ok', () => {
@@ -93,6 +93,55 @@ describe('calcularConformidade', () => {
       })).toBe('nao_conforme')
     })
   })
+
+  describe('validade vencida', () => {
+    it('N2 vencido é sempre não conforme, mesmo com tudo mais ok', () => {
+      expect(calcularConformidade({
+        operacional: true, sinalizacaoOk: true, capExtOk: true,
+        tipoAtual: 'CO²', tipoExigido: 'CO²',
+        validadeNivel2: '2020-01'
+      })).toBe('nao_conforme')
+    })
+
+    it('N3 vencido é sempre não conforme, mesmo com tudo mais ok', () => {
+      expect(calcularConformidade({
+        operacional: true, sinalizacaoOk: true, capExtOk: true,
+        tipoAtual: 'CO²', tipoExigido: 'CO²',
+        validadeNivel3: '2020'
+      })).toBe('nao_conforme')
+    })
+
+    it('N2/N3 no futuro não afeta conformidade', () => {
+      expect(calcularConformidade({
+        operacional: true, sinalizacaoOk: true, capExtOk: true,
+        tipoAtual: 'CO²', tipoExigido: 'CO²',
+        validadeNivel2: '2099-01', validadeNivel3: '2099'
+      })).toBe('conforme')
+    })
+  })
+})
+
+describe('n2Vencida / n3Vencida', () => {
+  it('sem validade informada não é vencida', () => {
+    expect(n2Vencida(null)).toBe(false)
+    expect(n2Vencida('')).toBe(false)
+    expect(n3Vencida(null)).toBe(false)
+    expect(n3Vencida('')).toBe(false)
+  })
+
+  it('n2Vencida aceita formato de input (YYYY-MM) e formato salvo (YYYY-MM-DD)', () => {
+    expect(n2Vencida('2020-01')).toBe(true)
+    expect(n2Vencida('2020-01-01')).toBe(true)
+    expect(n2Vencida('2099-01')).toBe(false)
+    expect(n2Vencida('2099-01-01')).toBe(false)
+  })
+
+  it('n3Vencida aceita formato de input (YYYY) e formato salvo (YYYY-12-01)', () => {
+    expect(n3Vencida('2020')).toBe(true)
+    expect(n3Vencida('2020-12-01')).toBe(true)
+    expect(n3Vencida('2099')).toBe(false)
+    expect(n3Vencida('2099-12-01')).toBe(false)
+  })
 })
 
 describe('motivosNaoConformidade', () => {
@@ -126,6 +175,69 @@ describe('motivosNaoConformidade', () => {
       operacional: true, sinalizacaoOk: true, capExtOk: true,
       tipoAtual: 'CO²', tipoExigido: 'CO²'
     })).toEqual([])
+  })
+
+  it('validade N2 vencida gera motivo próprio, antes dos demais', () => {
+    expect(motivosNaoConformidade({ operacional: true, sinalizacaoOk: true, validadeNivel2: '2020-01' }))
+      .toEqual(['Validade Nível 2 vencida'])
+  })
+
+  it('validade N3 vencida gera motivo próprio', () => {
+    expect(motivosNaoConformidade({ operacional: true, sinalizacaoOk: true, validadeNivel3: '2020' }))
+      .toEqual(['Validade Nível 3 vencida'])
+  })
+
+  it('N2 e N3 vencidos juntos com outro problema geram todos os motivos', () => {
+    expect(motivosNaoConformidade({
+      operacional: false, fatoresSelecionados: [],
+      validadeNivel2: '2020-01', validadeNivel3: '2020'
+    })).toEqual(['Validade Nível 2 vencida', 'Validade Nível 3 vencida', 'Extintor não operacional'])
+  })
+})
+
+describe('separarMotivos', () => {
+  const VAZIO = { capExt: false, sinalizacao: false, tipoDivergente: false, validadeN2: false, validadeN3: false, operacional: false }
+
+  it('motivo vazio/nulo não marca nenhuma categoria', () => {
+    expect(separarMotivos(null)).toEqual(VAZIO)
+    expect(separarMotivos('')).toEqual(VAZIO)
+  })
+
+  it('reconhece capacidade extintora isolada', () => {
+    expect(separarMotivos('Capacidade extintora abaixo do exigido pela planta'))
+      .toEqual({ ...VAZIO, capExt: true })
+  })
+
+  it('reconhece sinalização isolada', () => {
+    expect(separarMotivos('Sinalização não conforme'))
+      .toEqual({ ...VAZIO, sinalizacao: true })
+  })
+
+  it('reconhece tipo divergente isolado, sem marcar operacional', () => {
+    expect(separarMotivos('Tipo divergente da planta (atual: PQS ABC, exigido: CO²)'))
+      .toEqual({ ...VAZIO, tipoDivergente: true })
+  })
+
+  it('reconhece validade N2/N3 vencida isoladas, sem marcar operacional', () => {
+    expect(separarMotivos('Validade Nível 2 vencida')).toEqual({ ...VAZIO, validadeN2: true })
+    expect(separarMotivos('Validade Nível 3 vencida')).toEqual({ ...VAZIO, validadeN3: true })
+  })
+
+  it('fatores de não operacionalidade (texto livre) marcam operacional', () => {
+    expect(separarMotivos('Lacre violado, Manômetro zerado'))
+      .toEqual({ ...VAZIO, operacional: true })
+  })
+
+  it('combina várias categorias no mesmo motivo', () => {
+    const motivo = 'Validade Nível 2 vencida, Lacre violado, Manômetro zerado, Sinalização não conforme, Capacidade extintora abaixo do exigido pela planta'
+    expect(separarMotivos(motivo)).toEqual({ ...VAZIO, capExt: true, sinalizacao: true, validadeN2: true, operacional: true })
+  })
+
+  it('cap.ext + tipo divergente juntos não marca operacional (regressão do bug de regex global)', () => {
+    const motivo = 'Capacidade extintora abaixo do exigido pela planta, Tipo divergente da planta (atual: PQS ABC, exigido: CO²)'
+    expect(separarMotivos(motivo)).toEqual({ ...VAZIO, capExt: true, tipoDivergente: true })
+    // chamar duas vezes seguidas garante que o regex sem flag "g" não guarda lastIndex entre chamadas
+    expect(separarMotivos(motivo).tipoDivergente).toBe(true)
   })
 })
 

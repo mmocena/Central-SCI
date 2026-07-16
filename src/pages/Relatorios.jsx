@@ -26,7 +26,9 @@ function situacaoDoRegistroHistorico(item) {
     tipoExigido: local?.planta_tipo_exigido,
     capExtOk: local?.planta_cap_ext_exigida ? p.cap_ext_ok : undefined,
     operacional: p.operacional,
-    sinalizacaoOk: p.sinalizacao_ok
+    sinalizacaoOk: p.sinalizacao_ok,
+    validadeNivel2: p.validade_nivel2,
+    validadeNivel3: p.validade_nivel3
   })
 }
 

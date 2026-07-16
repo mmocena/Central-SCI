@@ -161,7 +161,9 @@ export default function FormInspecao({
       sinalizacaoOk: form.sinalizacao_ok,
       capExtOk: local.planta_cap_ext_exigida ? form.cap_ext_ok : undefined,
       tipoAtual: form[`tipo_${sk}`],
-      tipoExigido: local.planta_tipo_exigido
+      tipoExigido: local.planta_tipo_exigido,
+      validadeNivel2: form[`n2_${sk}`],
+      validadeNivel3: form[`n3_${sk}`]
     })
   }
 
@@ -220,7 +222,9 @@ export default function FormInspecao({
       sinalizacaoOk: form.sinalizacao_ok,
       capExtOk: local.planta_cap_ext_exigida ? form.cap_ext_ok : undefined,
       tipoAtual: form.extintor_tipo,
-      tipoExigido: local.planta_tipo_exigido
+      tipoExigido: local.planta_tipo_exigido,
+      validadeNivel2: form.validade_nivel2,
+      validadeNivel3: form.validade_nivel3
     })
     const motivo_nao_conformidade = motivos.length > 0 ? motivos.join(', ') : null
     const observacoes = [textoObservacaoAutomatica(motivos), form.observacoes.trim()].filter(Boolean).join(' ')
@@ -369,7 +373,9 @@ export default function FormInspecao({
     sinalizacaoOk: form.sinalizacao_ok,
     capExtOk: local.planta_cap_ext_exigida ? form.cap_ext_ok : undefined,
     tipoAtual: form.extintor_tipo,
-    tipoExigido: local.planta_tipo_exigido
+    tipoExigido: local.planta_tipo_exigido,
+    validadeNivel2: form.validade_nivel2,
+    validadeNivel3: form.validade_nivel3
   }))
 
   return (
