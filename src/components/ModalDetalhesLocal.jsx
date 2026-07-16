@@ -1,9 +1,9 @@
 import { createPortal } from 'react-dom'
 import { unidadeDoTipo } from '../lib/formato'
+import { tipoDivergente } from '../lib/conformidade'
 
 const SITUACAO = {
   conforme:     { label: 'Conforme',     cls: 'text-green-700 bg-green-50 border-green-200' },
-  alerta:       { label: 'Alerta',       cls: 'text-amber-700 bg-amber-50 border-amber-200' },
   nao_conforme: { label: 'Não Conforme', cls: 'text-red-700 bg-red-50 border-red-200' },
 }
 
@@ -63,11 +63,18 @@ export default function ModalDetalhesLocal({ local, slot, estado, onClose, tipos
         {/* Conteúdo */}
         <div className="p-4 space-y-4">
 
-          {sit && (
-            <span className={`inline-block px-2 py-1 rounded-lg border text-sm font-semibold ${sit.cls}`}>
-              {sit.label}
-            </span>
-          )}
+          <div className="flex items-center gap-2 flex-wrap">
+            {sit && (
+              <span className={`inline-block px-2 py-1 rounded-lg border text-sm font-semibold ${sit.cls}`}>
+                {sit.label}
+              </span>
+            )}
+            {tipoDivergente(estado.extintor_tipo, local.planta_tipo_exigido) && (
+              <span className="inline-block px-2 py-1 rounded-lg border text-sm font-semibold text-amber-700 bg-amber-50 border-amber-200">
+                Alerta
+              </span>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <Campo label="Planta exigida">{plantaLabel || null}</Campo>

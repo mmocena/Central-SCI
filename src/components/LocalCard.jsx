@@ -1,9 +1,9 @@
 import IconeExtintor from './IconeExtintor'
 import { unidadeDoTipo } from '../lib/formato'
+import { tipoDivergente } from '../lib/conformidade'
 
 const SITUACAO = {
   conforme:     { cor: 'text-green-600', bg: 'bg-green-50 border-green-200',  label: 'Conforme' },
-  alerta:       { cor: 'text-amber-600', bg: 'bg-amber-50 border-amber-200',  label: 'Alerta' },
   nao_conforme: { cor: 'text-red-600',   bg: 'bg-red-50 border-red-200',      label: 'Não Conforme' }
 }
 
@@ -116,6 +116,11 @@ export default function LocalCard({ local, onClick, inicioPeriodo, tiposExtintor
                   {sitSlot && (
                     <span className={`text-[10px] border px-1.5 py-0.5 rounded-full font-medium ${sitSlot.bg} ${sitSlot.cor}`}>
                       {sitSlot.label}
+                    </span>
+                  )}
+                  {tipoDivergente(estado?.extintor_tipo, local.planta_tipo_exigido) && (
+                    <span className="text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded-full font-medium">
+                      Alerta
                     </span>
                   )}
                   {estado?.motivo_nao_conformidade && (

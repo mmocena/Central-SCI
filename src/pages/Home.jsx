@@ -4,6 +4,7 @@ import { fetchLocaisComEstado, fetchInicioPeriodoInspecao, resetarPeriodoInspeca
 import LocalCard from '../components/LocalCard'
 import ModalLocal from '../components/ModalLocal'
 import { useToast } from '../components/Toast'
+import { tipoDivergente } from '../lib/conformidade'
 
 const STORAGE_KEY = 'sci_responsavel'
 
@@ -87,6 +88,7 @@ export default function Home() {
       }
       if (filtros.status === 'manutencao' && !slots.some(s => s.em_manutencao)) return false
       if (filtros.status === 'reserva' && !slots.some(s => s.reserva_empresa)) return false
+      if (filtros.status === 'alerta' && !slots.some(s => tipoDivergente(s.extintor_tipo, local.planta_tipo_exigido))) return false
       return true
     })
   }, [locais, filtros])
@@ -298,7 +300,6 @@ export default function Home() {
               <div className="flex flex-wrap gap-1.5">
                 {[
                   { valor: 'conforme',     label: 'Conforme' },
-                  { valor: 'alerta',       label: 'Alerta' },
                   { valor: 'nao_conforme', label: 'Não Conforme' }
                 ].map(s => (
                   <button
@@ -326,6 +327,12 @@ export default function Home() {
                   className={`btn-option text-xs py-1 px-2.5 ${filtros.status === 'reserva' ? 'selected' : ''}`}
                 >
                   RESERVA
+                </button>
+                <button
+                  onClick={() => toggleFiltro('status', 'alerta')}
+                  className={`btn-option text-xs py-1 px-2.5 ${filtros.status === 'alerta' ? 'selected' : ''}`}
+                >
+                  Alerta
                 </button>
               </div>
             </div>

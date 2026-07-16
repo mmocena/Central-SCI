@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { motivosNaoConformidade, textoObservacaoAutomatica } from '../lib/conformidade'
+import { motivosNaoConformidade, textoObservacaoAutomatica, textoTipoDivergente } from '../lib/conformidade'
 
 function CampoColapsavel({ label, valor, aberto, onTrocar, children }) {
   if (valor && !aberto) {
@@ -160,11 +160,15 @@ export default function FormInspecao({
       fatoresSelecionados: fatores.filter(f => form[`fatores_nc_${sk}`].includes(f.id)).map(f => f.descricao),
       sinalizacaoOk: form.sinalizacao_ok,
       capExtOk: local.planta_cap_ext_exigida ? form.cap_ext_ok : undefined,
-      tipoAtual: form[`tipo_${sk}`],
-      tipoExigido: local.planta_tipo_exigido,
       validadeNivel2: form[`n2_${sk}`],
       validadeNivel3: form[`n3_${sk}`]
     })
+  }
+
+  // Alerta de tipo divergente — não é motivo de não conformidade, só entra
+  // no texto de Observações (ver comentário em motivosNaoConformidade).
+  function textoTipoSlotDual(sk) {
+    return textoTipoDivergente(form[`tipo_${sk}`], local.planta_tipo_exigido)
   }
 
   // ── Submit dual-slot ──
@@ -190,7 +194,7 @@ export default function FormInspecao({
           validade_nivel2: form.n2_a, validade_nivel3: form.n3_a,
           operacional: form.operacional_a, fatores_nc: form.fatores_nc_a,
           motivo_nao_conformidade: motivosA.length ? motivosA.join(', ') : null,
-          observacoes: [textoObservacaoAutomatica(motivosA), extra].filter(Boolean).join(' '),
+          observacoes: [textoObservacaoAutomatica(motivosA), textoTipoSlotDual('a'), extra].filter(Boolean).join(' '),
           reserva_empresa: false, ...shared
         },
         slotB: {
@@ -198,7 +202,7 @@ export default function FormInspecao({
           validade_nivel2: form.n2_b, validade_nivel3: form.n3_b,
           operacional: form.operacional_b, fatores_nc: form.fatores_nc_b,
           motivo_nao_conformidade: motivosB.length ? motivosB.join(', ') : null,
-          observacoes: [textoObservacaoAutomatica(motivosB), extra].filter(Boolean).join(' '),
+          observacoes: [textoObservacaoAutomatica(motivosB), textoTipoSlotDual('b'), extra].filter(Boolean).join(' '),
           reserva_empresa: false, ...shared
         }
       })
@@ -221,13 +225,12 @@ export default function FormInspecao({
       fatoresSelecionados: fatores.filter(f => form.fatores_nc.includes(f.id)).map(f => f.descricao),
       sinalizacaoOk: form.sinalizacao_ok,
       capExtOk: local.planta_cap_ext_exigida ? form.cap_ext_ok : undefined,
-      tipoAtual: form.extintor_tipo,
-      tipoExigido: local.planta_tipo_exigido,
       validadeNivel2: form.validade_nivel2,
       validadeNivel3: form.validade_nivel3
     })
     const motivo_nao_conformidade = motivos.length > 0 ? motivos.join(', ') : null
-    const observacoes = [textoObservacaoAutomatica(motivos), form.observacoes.trim()].filter(Boolean).join(' ')
+    const textoTipo = textoTipoDivergente(form.extintor_tipo, local.planta_tipo_exigido)
+    const observacoes = [textoObservacaoAutomatica(motivos), textoTipo, form.observacoes.trim()].filter(Boolean).join(' ')
 
     setEnviando(true)
     try {
@@ -247,8 +250,8 @@ export default function FormInspecao({
   // DUAL-SLOT FORM
   // ════════════════════════════════════════
   if (temDoisSlots) {
-    const textoAutoA = textoObservacaoAutomatica(motivosSlotDual('a'))
-    const textoAutoB = textoObservacaoAutomatica(motivosSlotDual('b'))
+    const textoAutoA = [textoObservacaoAutomatica(motivosSlotDual('a')), textoTipoSlotDual('a')].filter(Boolean).join(' ')
+    const textoAutoB = [textoObservacaoAutomatica(motivosSlotDual('b')), textoTipoSlotDual('b')].filter(Boolean).join(' ')
 
     return (
       <div className="card space-y-5">
@@ -367,16 +370,17 @@ export default function FormInspecao({
   // ════════════════════════════════════════
   // SINGLE-SLOT FORM (original)
   // ════════════════════════════════════════
-  const textoAuto = textoObservacaoAutomatica(motivosNaoConformidade({
-    operacional: form.operacional,
-    fatoresSelecionados: fatores.filter(f => form.fatores_nc.includes(f.id)).map(f => f.descricao),
-    sinalizacaoOk: form.sinalizacao_ok,
-    capExtOk: local.planta_cap_ext_exigida ? form.cap_ext_ok : undefined,
-    tipoAtual: form.extintor_tipo,
-    tipoExigido: local.planta_tipo_exigido,
-    validadeNivel2: form.validade_nivel2,
-    validadeNivel3: form.validade_nivel3
-  }))
+  const textoAuto = [
+    textoObservacaoAutomatica(motivosNaoConformidade({
+      operacional: form.operacional,
+      fatoresSelecionados: fatores.filter(f => form.fatores_nc.includes(f.id)).map(f => f.descricao),
+      sinalizacaoOk: form.sinalizacao_ok,
+      capExtOk: local.planta_cap_ext_exigida ? form.cap_ext_ok : undefined,
+      validadeNivel2: form.validade_nivel2,
+      validadeNivel3: form.validade_nivel3
+    })),
+    textoTipoDivergente(form.extintor_tipo, local.planta_tipo_exigido)
+  ].filter(Boolean).join(' ')
 
   return (
     <div className="card space-y-5">

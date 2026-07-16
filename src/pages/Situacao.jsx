@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchLocaisComEstado, fetchTiposExtintor } from '../lib/queries'
 import { unidadeDoTipo } from '../lib/formato'
+import { tipoDivergente } from '../lib/conformidade'
 
 const SITUACAO = {
   conforme:     { label: 'Conforme',     cls: 'text-green-700 bg-green-50 border-green-200' },
-  alerta:       { label: 'Alerta',       cls: 'text-amber-700 bg-amber-50 border-amber-200' },
   nao_conforme: { label: 'Não Conforme', cls: 'text-red-700 bg-red-50 border-red-200' },
 }
 
@@ -86,13 +86,15 @@ export default function Situacao() {
     ? linhas
     : filtroSit === 'sem_inspecao'
       ? linhas.filter(l => !l.estado.data_ultima_inspecao)
-      : linhas.filter(l => l.estado.situacao_conformidade === filtroSit)
+      : filtroSit === 'alerta'
+        ? linhas.filter(l => tipoDivergente(l.estado.extintor_tipo, l.local.planta_tipo_exigido))
+        : linhas.filter(l => l.estado.situacao_conformidade === filtroSit)
 
   if (loading) return <div className="p-4 text-sm text-slate-500">Carregando...</div>
 
   const contadores = {
     conforme: linhas.filter(l => l.estado.situacao_conformidade === 'conforme').length,
-    alerta: linhas.filter(l => l.estado.situacao_conformidade === 'alerta').length,
+    alerta: linhas.filter(l => tipoDivergente(l.estado.extintor_tipo, l.local.planta_tipo_exigido)).length,
     nao_conforme: linhas.filter(l => l.estado.situacao_conformidade === 'nao_conforme').length,
     sem_inspecao: linhas.filter(l => !l.estado.data_ultima_inspecao).length,
   }
@@ -218,6 +220,9 @@ export default function Situacao() {
                   {/* Status */}
                   <td className="px-3 py-2 text-center">
                     <div className="flex items-center justify-center gap-1 flex-wrap">
+                      {tipoDivergente(estado.extintor_tipo, local.planta_tipo_exigido) && (
+                        <span className="text-amber-700 bg-amber-50 border border-amber-200 px-1.5 rounded">Alerta</span>
+                      )}
                       {estado.em_manutencao && (
                         <span className="text-slate-500 bg-slate-100 border border-slate-300 px-1.5 rounded">Manutenção</span>
                       )}

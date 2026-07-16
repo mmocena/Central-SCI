@@ -4,11 +4,11 @@ import autoTable from 'jspdf-autotable'
 import {
   fetchLocaisComEstado, fetchLocaisComVencimento, fetchInicioPeriodoInspecao, fetchHistoricoInspecoes, fetchTiposExtintor
 } from '../lib/queries'
-import { calcularConformidade } from '../lib/conformidade'
+import { calcularConformidade, tipoDivergente } from '../lib/conformidade'
 import { unidadeDoTipo } from '../lib/formato'
 import { useToast } from '../components/Toast'
 
-const SITUACAO_LABEL = { conforme: 'Conforme', alerta: 'Alerta', nao_conforme: 'Não Conforme' }
+const SITUACAO_LABEL = { conforme: 'Conforme', nao_conforme: 'Não Conforme' }
 
 function ultimoDiaDoMes(anoMes) {
   const [ano, mes] = anoMes.split('-').map(Number)
@@ -22,8 +22,6 @@ function situacaoDoRegistroHistorico(item) {
   return calcularConformidade({
     capExtAtual: p.cap_ext_atual,
     capExtExigida: local?.planta_cap_ext_exigida,
-    tipoAtual: p.extintor_tipo,
-    tipoExigido: local?.planta_tipo_exigido,
     capExtOk: local?.planta_cap_ext_exigida ? p.cap_ext_ok : undefined,
     operacional: p.operacional,
     sinalizacaoOk: p.sinalizacao_ok,
@@ -72,6 +70,7 @@ function estiloCelulaPdf(colKey, valor) {
   if (colKey === 'status') {
     if (/RESERVA/.test(valor)) return { text: [37, 99, 235], fill: [239, 246, 255] }
     if (/Manutenção/.test(valor)) return { text: [100, 116, 139], fill: [241, 245, 249] }
+    if (/Alerta/.test(valor)) return { text: [180, 83, 9], fill: [255, 251, 235] }
   }
   return null
 }
@@ -142,7 +141,11 @@ function criarColunasSituacao(tiposExtintor) {
     { key: 'observacoes', label: 'Observações', get: ({ estado }) => estado.observacoes || '—' },
     { key: 'validade_n2', label: 'Val. N2', get: ({ estado }) => formatN2(estado.validade_nivel2) },
     { key: 'validade_n3', label: 'Val. N3', get: ({ estado }) => formatN3(estado.validade_nivel3) },
-    { key: 'status', label: 'Status', get: ({ estado }) => [estado.em_manutencao && 'Manutenção', estado.reserva_empresa && 'RESERVA'].filter(Boolean).join(', ') || '—' },
+    { key: 'status', label: 'Status', get: ({ local, estado }) => [
+      tipoDivergente(estado.extintor_tipo, local.planta_tipo_exigido) && 'Alerta',
+      estado.em_manutencao && 'Manutenção',
+      estado.reserva_empresa && 'RESERVA'
+    ].filter(Boolean).join(', ') || '—' },
     { key: 'equipe', label: 'Equipe', get: ({ estado }) => estado.equipe_ultima_inspecao || '—' },
     { key: 'responsavel', label: 'Responsável', get: ({ estado }) => estado.responsavel_ultima_inspecao || '—' },
     { key: 'data', label: 'Data/Hora', get: ({ estado }) => formatDataHora(estado.data_ultima_inspecao) },
@@ -166,7 +169,10 @@ function criarColunasHistorico(tiposExtintor) {
   { key: 'observacoes', label: 'Observações', get: item => item.payload?.observacoes || '—' },
   { key: 'validade_n2', label: 'Val. N2', get: item => formatN2(item.payload?.validade_nivel2) },
   { key: 'validade_n3', label: 'Val. N3', get: item => formatN3(item.payload?.validade_nivel3) },
-  { key: 'status', label: 'Status', get: item => item.payload?.reserva_empresa ? 'RESERVA' : '—' },
+  { key: 'status', label: 'Status', get: item => [
+    tipoDivergente(item.payload?.extintor_tipo, item.locais?.planta_tipo_exigido) && 'Alerta',
+    item.payload?.reserva_empresa && 'RESERVA'
+  ].filter(Boolean).join(', ') || '—' },
   { key: 'equipe', label: 'Equipe', get: item => item.equipe },
   { key: 'responsavel', label: 'Responsável', get: item => item.responsavel },
   { key: 'data', label: 'Data/Hora', get: item => formatDataHora(item.data_operacao) },
@@ -223,7 +229,7 @@ export default function Relatorios() {
     l.estado.data_ultima_inspecao && (!inicioPeriodo || l.estado.data_ultima_inspecao >= inicioPeriodo)
   )
   const linhasConforme = linhas.filter(l => l.estado.situacao_conformidade === 'conforme')
-  const linhasAlerta = linhas.filter(l => l.estado.situacao_conformidade === 'alerta')
+  const linhasAlerta = linhas.filter(l => tipoDivergente(l.estado.extintor_tipo, l.local.planta_tipo_exigido))
   const linhasNaoConforme = linhas.filter(l => l.estado.situacao_conformidade === 'nao_conforme')
   const linhasReserva = linhas.filter(l => l.estado.reserva_empresa)
   const linhasVencendo = vencimentos.flatMap(v =>

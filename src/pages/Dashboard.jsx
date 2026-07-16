@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fetchLocaisComEstado, fetchInicioPeriodoInspecao, fetchTiposExtintor } from '../lib/queries'
+import { tipoDivergente } from '../lib/conformidade'
 import ModalDetalhesLocal from '../components/ModalDetalhesLocal'
 import ModalListaExtintores from '../components/ModalListaExtintores'
 
@@ -128,7 +129,7 @@ export default function Dashboard() {
   )
   const linhasNaoVistoriadas = linhas.filter(l => !linhasVistoriadas.includes(l))
   const linhasConforme = linhas.filter(l => l.estado.situacao_conformidade === 'conforme')
-  const linhasAlerta = linhas.filter(l => l.estado.situacao_conformidade === 'alerta')
+  const linhasAlerta = linhas.filter(l => tipoDivergente(l.estado.extintor_tipo, l.local.planta_tipo_exigido))
   const linhasNaoConforme = linhas.filter(l => l.estado.situacao_conformidade === 'nao_conforme')
   const linhasReserva = linhas.filter(l => l.estado.reserva_empresa)
   const emManutencao = linhas.filter(l => l.estado.em_manutencao).length
@@ -154,9 +155,7 @@ export default function Dashboard() {
   const vistoriados = linhasVistoriadas.length
   const naoVistoriados = linhasNaoVistoriadas.length
 
-  const naoConformidades = linhas
-    .filter(l => l.estado.situacao_conformidade === 'alerta' || l.estado.situacao_conformidade === 'nao_conforme')
-    .sort((a, b) => (a.estado.situacao_conformidade === 'nao_conforme' ? -1 : 1))
+  const naoConformidades = linhas.filter(l => l.estado.situacao_conformidade === 'nao_conforme')
 
   function abrirLista(titulo, linhasFiltradas, cor) {
     setListaAberta({ titulo, linhas: linhasFiltradas, cor })
@@ -253,14 +252,9 @@ export default function Dashboard() {
               <button
                 key={`${local.id}-${slot}`}
                 onClick={() => setDetalheAberto({ local, slot, estado })}
-                className="w-full flex items-center gap-3 p-3 rounded-2xl border bg-white shadow-sm text-left active:scale-[0.98] transition-transform"
-                style={{ borderColor: estado.situacao_conformidade === 'nao_conforme' ? '#fecaca' : '#fde68a' }}
+                className="w-full flex items-center gap-3 p-3 rounded-2xl border border-red-200 bg-white shadow-sm text-left active:scale-[0.98] transition-transform"
               >
-                <span className={`shrink-0 text-xs font-bold px-2 py-1 rounded-lg ${
-                  estado.situacao_conformidade === 'nao_conforme'
-                    ? 'text-sci-red bg-red-50'
-                    : 'text-amber-700 bg-amber-50'
-                }`}>
+                <span className="shrink-0 text-xs font-bold px-2 py-1 rounded-lg text-sci-red bg-red-50">
                   {String(local.numero).padStart(2, '0')}{local.tem_slot_a && local.tem_slot_b ? slot : ''}
                 </span>
                 <div className="flex-1 min-w-0">

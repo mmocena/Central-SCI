@@ -1,14 +1,17 @@
 import { describe, it, expect } from 'vitest'
-import { calcularConformidade, motivosNaoConformidade, textoObservacaoAutomatica, separarMotivos, n2Vencida, n3Vencida } from './conformidade'
+import { calcularConformidade, motivosNaoConformidade, textoObservacaoAutomatica, separarMotivos, n2Vencida, n3Vencida, tipoDivergente, textoTipoDivergente } from './conformidade'
 
 describe('calcularConformidade', () => {
+  it('só existem duas situações possíveis: conforme e nao_conforme', () => {
+    expect(calcularConformidade({ operacional: true, sinalizacaoOk: true, capExtOk: true })).toBe('conforme')
+    expect(calcularConformidade({ operacional: false, sinalizacaoOk: true, capExtOk: true })).toBe('nao_conforme')
+  })
+
   it('não operacional é sempre não conforme, mesmo com tudo mais ok', () => {
     expect(calcularConformidade({
       operacional: false,
       sinalizacaoOk: true,
-      capExtOk: true,
-      tipoAtual: 'CO²',
-      tipoExigido: 'CO²'
+      capExtOk: true
     })).toBe('nao_conforme')
   })
 
@@ -16,9 +19,7 @@ describe('calcularConformidade', () => {
     expect(calcularConformidade({
       operacional: true,
       sinalizacaoOk: false,
-      capExtOk: true,
-      tipoAtual: 'CO²',
-      tipoExigido: 'CO²'
+      capExtOk: true
     })).toBe('nao_conforme')
   })
 
@@ -31,58 +32,51 @@ describe('calcularConformidade', () => {
       expect(calcularConformidade({ operacional: true, sinalizacaoOk: true, capExtOk: false })).toBe('nao_conforme')
     })
 
-    it('capExtOk true e tipo igual é conforme', () => {
+    it('capExtOk true é conforme', () => {
       expect(calcularConformidade({
-        operacional: true, sinalizacaoOk: true, capExtOk: true,
-        tipoAtual: 'CO²', tipoExigido: 'CO²'
+        operacional: true, sinalizacaoOk: true, capExtOk: true
       })).toBe('conforme')
     })
 
-    it('capExtOk true e tipo divergente é alerta', () => {
+    it('capExtOk true com tipo divergente continua conforme (tipo divergente não é não conformidade)', () => {
       expect(calcularConformidade({
-        operacional: true, sinalizacaoOk: true, capExtOk: true,
-        tipoAtual: 'PQS ABC', tipoExigido: 'CO²'
-      })).toBe('alerta')
+        operacional: true, sinalizacaoOk: true, capExtOk: true
+      })).toBe('conforme')
     })
   })
 
   describe('caminho single-slot (string de capacidade extintora)', () => {
-    it('sem exigência de capacidade na planta, só compara tipo', () => {
+    it('sem exigência de capacidade na planta é conforme', () => {
       expect(calcularConformidade({
-        operacional: true, sinalizacaoOk: true,
-        tipoAtual: 'CO²', tipoExigido: 'CO²'
+        operacional: true, sinalizacaoOk: true
       })).toBe('conforme')
     })
 
     it('capacidade atual abaixo da exigida é não conforme', () => {
       expect(calcularConformidade({
         operacional: true, sinalizacaoOk: true,
-        capExtAtual: '10-B:C', capExtExigida: '20-B:C',
-        tipoAtual: 'CO²', tipoExigido: 'CO²'
+        capExtAtual: '10-B:C', capExtExigida: '20-B:C'
       })).toBe('nao_conforme')
     })
 
-    it('capacidade atual igual ou superior à exigida é conforme (tipo igual)', () => {
+    it('capacidade atual igual ou superior à exigida é conforme', () => {
       expect(calcularConformidade({
         operacional: true, sinalizacaoOk: true,
-        capExtAtual: '20-B:C', capExtExigida: '20-B:C',
-        tipoAtual: 'CO²', tipoExigido: 'CO²'
+        capExtAtual: '20-B:C', capExtExigida: '20-B:C'
       })).toBe('conforme')
     })
 
-    it('capacidade ok mas tipo divergente é alerta', () => {
+    it('capacidade ok mas tipo divergente continua conforme (tipo divergente não é não conformidade)', () => {
       expect(calcularConformidade({
         operacional: true, sinalizacaoOk: true,
-        capExtAtual: '20-B:C', capExtExigida: '20-B:C',
-        tipoAtual: 'PQS ABC', tipoExigido: 'CO²'
-      })).toBe('alerta')
+        capExtAtual: '20-B:C', capExtExigida: '20-B:C'
+      })).toBe('conforme')
     })
 
     it('classe C exigida e ausente no atual é não conforme', () => {
       expect(calcularConformidade({
         operacional: true, sinalizacaoOk: true,
-        capExtAtual: '20-B', capExtExigida: '20-B:C',
-        tipoAtual: 'CO²', tipoExigido: 'CO²'
+        capExtAtual: '20-B', capExtExigida: '20-B:C'
       })).toBe('nao_conforme')
     })
 
@@ -98,7 +92,6 @@ describe('calcularConformidade', () => {
     it('N2 vencido é sempre não conforme, mesmo com tudo mais ok', () => {
       expect(calcularConformidade({
         operacional: true, sinalizacaoOk: true, capExtOk: true,
-        tipoAtual: 'CO²', tipoExigido: 'CO²',
         validadeNivel2: '2020-01'
       })).toBe('nao_conforme')
     })
@@ -106,7 +99,6 @@ describe('calcularConformidade', () => {
     it('N3 vencido é sempre não conforme, mesmo com tudo mais ok', () => {
       expect(calcularConformidade({
         operacional: true, sinalizacaoOk: true, capExtOk: true,
-        tipoAtual: 'CO²', tipoExigido: 'CO²',
         validadeNivel3: '2020'
       })).toBe('nao_conforme')
     })
@@ -114,10 +106,26 @@ describe('calcularConformidade', () => {
     it('N2/N3 no futuro não afeta conformidade', () => {
       expect(calcularConformidade({
         operacional: true, sinalizacaoOk: true, capExtOk: true,
-        tipoAtual: 'CO²', tipoExigido: 'CO²',
         validadeNivel2: '2099-01', validadeNivel3: '2099'
       })).toBe('conforme')
     })
+  })
+})
+
+describe('tipoDivergente / textoTipoDivergente', () => {
+  it('tipos iguais não é divergente', () => {
+    expect(tipoDivergente('CO²', 'CO²')).toBe(false)
+    expect(textoTipoDivergente('CO²', 'CO²')).toBe('')
+  })
+
+  it('tipos diferentes é divergente, com texto formatado', () => {
+    expect(tipoDivergente('PQS ABC', 'CO²')).toBe(true)
+    expect(textoTipoDivergente('PQS ABC', 'CO²')).toBe('Tipo divergente da planta (atual: PQS ABC, exigido: CO²).')
+  })
+
+  it('sem tipo exigido na planta não é divergente', () => {
+    expect(tipoDivergente('CO²', undefined)).toBe(false)
+    expect(textoTipoDivergente('CO²', undefined)).toBe('')
   })
 })
 
@@ -155,25 +163,28 @@ describe('motivosNaoConformidade', () => {
       .toEqual(['Lacre violado, Manômetro zerado'])
   })
 
-  it('acumula motivos de sinalização, capacidade e tipo divergente juntos', () => {
+  it('acumula motivos de sinalização e capacidade juntos', () => {
     const motivos = motivosNaoConformidade({
       operacional: true,
       sinalizacaoOk: false,
-      capExtOk: false,
-      tipoAtual: 'PQS ABC',
-      tipoExigido: 'CO²'
+      capExtOk: false
     })
     expect(motivos).toEqual([
       'Sinalização não conforme',
-      'Capacidade extintora abaixo do exigido pela planta',
-      'Tipo divergente da planta (atual: PQS ABC, exigido: CO²)'
+      'Capacidade extintora abaixo do exigido pela planta'
     ])
+  })
+
+  it('tipo divergente nunca aparece em motivosNaoConformidade (só em Observações via textoTipoDivergente)', () => {
+    const motivos = motivosNaoConformidade({
+      operacional: true, sinalizacaoOk: true, capExtOk: true
+    })
+    expect(motivos).toEqual([])
   })
 
   it('sem nenhum problema retorna lista vazia', () => {
     expect(motivosNaoConformidade({
-      operacional: true, sinalizacaoOk: true, capExtOk: true,
-      tipoAtual: 'CO²', tipoExigido: 'CO²'
+      operacional: true, sinalizacaoOk: true, capExtOk: true
     })).toEqual([])
   })
 

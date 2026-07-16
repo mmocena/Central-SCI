@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchHistoricoInspecoes, fetchTiposExtintor } from '../lib/queries'
-import { calcularConformidade } from '../lib/conformidade'
+import { calcularConformidade, tipoDivergente } from '../lib/conformidade'
 import { unidadeDoTipo } from '../lib/formato'
 
 const SITUACAO = {
   conforme:     { label: 'Conforme',     cls: 'text-green-700 bg-green-50 border-green-200' },
-  alerta:       { label: 'Alerta',       cls: 'text-amber-700 bg-amber-50 border-amber-200' },
   nao_conforme: { label: 'Não Conforme', cls: 'text-red-700 bg-red-50 border-red-200' },
 }
 
@@ -25,8 +24,6 @@ function situacaoDoRegistro(item) {
   return calcularConformidade({
     capExtAtual: p.cap_ext_atual,
     capExtExigida: local?.planta_cap_ext_exigida,
-    tipoAtual: p.extintor_tipo,
-    tipoExigido: local?.planta_tipo_exigido,
     capExtOk: local?.planta_cap_ext_exigida ? p.cap_ext_ok : undefined,
     operacional: p.operacional,
     sinalizacaoOk: p.sinalizacao_ok,
@@ -243,9 +240,14 @@ export default function HistoricoInspecoes() {
 
                   {/* Status */}
                   <td className="px-3 py-2 text-center">
-                    {p.reserva_empresa && (
-                      <span className="text-blue-600 bg-blue-50 border border-blue-200 px-1.5 rounded">RESERVA</span>
-                    )}
+                    <div className="flex items-center justify-center gap-1 flex-wrap">
+                      {tipoDivergente(p.extintor_tipo, local?.planta_tipo_exigido) && (
+                        <span className="text-amber-700 bg-amber-50 border border-amber-200 px-1.5 rounded">Alerta</span>
+                      )}
+                      {p.reserva_empresa && (
+                        <span className="text-blue-600 bg-blue-50 border border-blue-200 px-1.5 rounded">RESERVA</span>
+                      )}
+                    </div>
                   </td>
 
                   {/* Equipe */}

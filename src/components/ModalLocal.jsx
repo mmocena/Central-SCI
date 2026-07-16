@@ -50,8 +50,6 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
       const conf = (slotData) => calcularConformidade({
         capExtOk: local.planta_cap_ext_exigida ? slotData.cap_ext_ok : undefined,
         capExtExigida: local.planta_cap_ext_exigida,
-        tipoAtual: slotData.extintor_tipo,
-        tipoExigido: local.planta_tipo_exigido,
         operacional: slotData.operacional,
         sinalizacaoOk: slotData.sinalizacao_ok,
         validadeNivel2: slotData.validade_nivel2,
@@ -66,8 +64,6 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
       const conformidade = calcularConformidade({
         capExtOk: local.planta_cap_ext_exigida ? dados.cap_ext_ok : undefined,
         capExtExigida: local.planta_cap_ext_exigida,
-        tipoAtual: dados.extintor_tipo,
-        tipoExigido: local.planta_tipo_exigido,
         operacional: dados.operacional,
         sinalizacaoOk: dados.sinalizacao_ok,
         validadeNivel2: dados.validade_nivel2,
@@ -250,8 +246,6 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
               const conformidade = calcularConformidade({
                 capExtAtual: inspecao.cap_ext_atual,
                 capExtExigida: local.planta_cap_ext_exigida,
-                tipoAtual: inspecao.extintor_tipo,
-                tipoExigido: local.planta_tipo_exigido,
                 validadeNivel2: inspecao.validade_nivel2,
                 validadeNivel3: inspecao.validade_nivel3
               })

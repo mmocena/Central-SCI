@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchLocaisComEstado, fetchTiposExtintor } from '../lib/queries'
-import { separarMotivos } from '../lib/conformidade'
+import { separarMotivos, tipoDivergente, textoTipoDivergente } from '../lib/conformidade'
 import ModalDetalhesLocal from '../components/ModalDetalhesLocal'
 
 function diasAte(dateStr) {
@@ -103,18 +103,10 @@ export default function NaoConformidades() {
   const linhasSinalizacao = linhasNaoConforme.filter(l => separarMotivos(l.estado.motivo_nao_conformidade).sinalizacao)
   const linhasOperacional = linhasNaoConforme.filter(l => separarMotivos(l.estado.motivo_nao_conformidade).operacional)
 
-  // "Tipo divergente" é o alerta de tipo errado COM capacidade extintora
-  // atendida — se a capacidade também estiver abaixo do exigido, o problema
-  // já é mais grave e pertence só ao bloco de Capacidade extintora. Cobre
-  // tanto a situação "alerta" pura quanto um "não conforme" por outro motivo
-  // (ex: sinalização) que tenha o tipo divergente junto, desde que a
-  // capacidade em si esteja ok.
-  const linhasTipoDivergente = linhas.filter(l => {
-    if (l.estado.situacao_conformidade === 'alerta') return true
-    if (l.estado.situacao_conformidade !== 'nao_conforme') return false
-    const m = separarMotivos(l.estado.motivo_nao_conformidade)
-    return m.tipoDivergente && !m.capExt
-  })
+  // Tipo divergente é um alerta independente da conformidade — aparece aqui
+  // sempre que o tipo atual diverge do exigido pela planta, esteja o
+  // extintor conforme ou não conforme por outro motivo.
+  const linhasTipoDivergente = linhas.filter(l => tipoDivergente(l.estado.extintor_tipo, l.local.planta_tipo_exigido))
 
   const linhasVencidoN2 = linhas.filter(l => {
     if (l.estado.em_manutencao) return false
@@ -151,7 +143,13 @@ export default function NaoConformidades() {
         detalheExtra={({ estado }) => `Venceu em ${estado.validade_nivel3?.split('-')[0] || ''}`}
       />
       <Bloco titulo="Sinalização" cor="vermelho" linhas={linhasSinalizacao} onSelecionar={setDetalheAberto} />
-      <Bloco titulo="Tipo divergente da planta" cor="ambar" linhas={linhasTipoDivergente} onSelecionar={setDetalheAberto} />
+      <Bloco
+        titulo="Tipo divergente da planta (Alerta)"
+        cor="ambar"
+        linhas={linhasTipoDivergente}
+        onSelecionar={setDetalheAberto}
+        detalheExtra={({ local, estado }) => textoTipoDivergente(estado.extintor_tipo, local.planta_tipo_exigido)}
+      />
 
       {detalheAberto && (
         <ModalDetalhesLocal

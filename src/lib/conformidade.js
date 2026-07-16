@@ -37,32 +37,40 @@ export function n3Vencida(validadeNivel3) {
   return new Date(data) < new Date()
 }
 
+// Tipo divergente da planta é um alerta independente da conformidade —
+// não entra em situacao_conformidade nem em motivo_nao_conformidade.
+// É recalculado direto dos campos (sem persistir nada extra) sempre que
+// precisa ser exibido, ex: badge "Alerta" na coluna Status.
+export function tipoDivergente(tipoAtual, tipoExigido) {
+  return Boolean(tipoAtual && tipoExigido && tipoAtual.trim() !== tipoExigido.trim())
+}
+
 // capExtOk: boolean override para locais com 2 slots (avaliação conjunta)
 // operacional: false → sempre não conforme
 // sinalizacaoOk: false → sempre não conforme
 // validadeNivel2/3 vencida → sempre não conforme (independe de operacional/sinalização/cap.ext)
-export function calcularConformidade({ capExtAtual, capExtExigida, tipoAtual, tipoExigido, capExtOk, operacional, sinalizacaoOk, validadeNivel2, validadeNivel3 }) {
+// Só existem 2 situações possíveis: 'conforme' ou 'nao_conforme'. Tipo
+// divergente sozinho NÃO torna o extintor não conforme — vira só o alerta
+// acima, separado, verificado por quem for exibir.
+export function calcularConformidade({ capExtAtual, capExtExigida, capExtOk, operacional, sinalizacaoOk, validadeNivel2, validadeNivel3 }) {
   if (n2Vencida(validadeNivel2)) return 'nao_conforme'
   if (n3Vencida(validadeNivel3)) return 'nao_conforme'
   if (operacional === false) return 'nao_conforme'
   if (sinalizacaoOk === false) return 'nao_conforme'
 
-  const tipoErrado = tipoAtual && tipoExigido && tipoAtual.trim() !== tipoExigido.trim()
-
   // Caminho dual-slot: usa boolean capExtOk
   if (capExtOk !== undefined && capExtOk !== null) {
-    if (!capExtOk) return 'nao_conforme'
-    return tipoErrado ? 'alerta' : 'conforme'
+    return capExtOk ? 'conforme' : 'nao_conforme'
   }
 
-  // Sem exigência de cap.ext: verifica só o tipo
+  // Sem exigência de cap.ext: nada mais a checar
   const parsedExigida = parseCapExt(capExtExigida)
-  if (!parsedExigida) return tipoErrado ? 'alerta' : 'conforme'
+  if (!parsedExigida) return 'conforme'
 
   // Caminho single-slot: compara strings
   const parsedAtual = parseCapExt(capExtAtual)
   if (!parsedAtual || !atende(parsedAtual, parsedExigida)) return 'nao_conforme'
-  return tipoErrado ? 'alerta' : 'conforme'
+  return 'conforme'
 }
 
 // Textos fixos usados em motivo_nao_conformidade — exportados para que quem
@@ -77,7 +85,11 @@ const REGEX_TIPO_DIVERGENTE = /Tipo divergente da planta \([^)]*\)\.?/
 // Lista os motivos por trás da conformidade calculada — usada tanto para o
 // resumo "Não Conformidade" quanto para o texto automático de Observações.
 // Cobre o caminho de capExtOk booleano (usado pelo formulário de inspeção padrão).
-export function motivosNaoConformidade({ operacional, fatoresSelecionados = [], sinalizacaoOk, capExtOk, tipoAtual, tipoExigido, validadeNivel2, validadeNivel3 }) {
+// Não inclui tipo divergente: esse é um alerta à parte (ver tipoDivergente/
+// textoTipoDivergente) que só aparece em Observações, nunca em Não Conformidade
+// — se já houver uma não conformidade real (ex: capacidade), o motivo dela já
+// aparece aqui; o tipo divergente por si só não é motivo de não conformidade.
+export function motivosNaoConformidade({ operacional, fatoresSelecionados = [], sinalizacaoOk, capExtOk, validadeNivel2, validadeNivel3 }) {
   const motivos = []
 
   if (n2Vencida(validadeNivel2)) motivos.push(MOTIVO_VALIDADE_N2)
@@ -88,17 +100,22 @@ export function motivosNaoConformidade({ operacional, fatoresSelecionados = [], 
   if (sinalizacaoOk === false) motivos.push(MOTIVO_SINALIZACAO)
   if (capExtOk === false) motivos.push(MOTIVO_CAP_EXT)
 
-  const tipoErrado = tipoAtual && tipoExigido && tipoAtual.trim() !== tipoExigido.trim()
-  if (tipoErrado) motivos.push(`Tipo divergente da planta (atual: ${tipoAtual}, exigido: ${tipoExigido})`)
-
   return motivos
 }
 
 // Texto fixo gerado a partir dos motivos — presente nas Observações sempre que
-// houver alerta ou não conformidade, para que a repetição do mesmo problema em
+// houver não conformidade, para que a repetição do mesmo problema em
 // inspeções sucessivas fique visível. Quando conforme, não gera texto nenhum.
 export function textoObservacaoAutomatica(motivos) {
   return motivos.length ? motivos.join('. ') + '.' : ''
+}
+
+// Texto do alerta de tipo divergente — só para Observações, nunca para
+// motivo_nao_conformidade (ver comentário de motivosNaoConformidade).
+export function textoTipoDivergente(tipoAtual, tipoExigido) {
+  return tipoDivergente(tipoAtual, tipoExigido)
+    ? `Tipo divergente da planta (atual: ${tipoAtual}, exigido: ${tipoExigido}).`
+    : ''
 }
 
 // Reconhece, a partir do texto salvo em motivo_nao_conformidade, quais das
@@ -110,7 +127,7 @@ export function separarMotivos(motivo) {
 
   const capExt = motivo.includes(MOTIVO_CAP_EXT)
   const sinalizacao = motivo.includes(MOTIVO_SINALIZACAO)
-  const tipoDivergente = REGEX_TIPO_DIVERGENTE.test(motivo)
+  const tipoDivergenteNoTexto = REGEX_TIPO_DIVERGENTE.test(motivo)
   const validadeN2 = motivo.includes(MOTIVO_VALIDADE_N2)
   const validadeN3 = motivo.includes(MOTIVO_VALIDADE_N3)
 
@@ -122,5 +139,5 @@ export function separarMotivos(motivo) {
     .replace(REGEX_TIPO_DIVERGENTE, '')
     .replace(/[,\s.]+/g, '')
 
-  return { capExt, sinalizacao, tipoDivergente, validadeN2, validadeN3, operacional: resto.length > 0 }
+  return { capExt, sinalizacao, tipoDivergente: tipoDivergenteNoTexto, validadeN2, validadeN3, operacional: resto.length > 0 }
 }
