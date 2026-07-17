@@ -377,7 +377,6 @@ export async function fetchLocaisComVencimento() {
   const { data: estados, error: e1 } = await supabase
     .from('local_estado_atual')
     .select('local_id, slot, validade_nivel2, validade_nivel3')
-    .neq('em_manutencao', true)
 
   if (e1) throw e1
 
@@ -412,4 +411,18 @@ export async function fetchLocaisComVencimento() {
     })
     return { ...local, vencimentos }
   })
+}
+
+// Ordens de manutenção ainda pendentes (aguardando recebimento) — fonte de
+// verdade pra "quantos extintores estão em manutenção agora", já que o local
+// em si não guarda mais esse vínculo (ver registrar_envio_manutencao).
+export async function fetchOrdensPendentes() {
+  const { data, error } = await supabase
+    .from('ordens_manutencao')
+    .select('*, locais(id, numero, edificacao, descricao, planta_tipo_exigido, planta_cap_ext_exigida, tem_slot_a, tem_slot_b)')
+    .eq('status', 'PENDENTE')
+    .order('data_saida', { ascending: false })
+
+  if (error) throw error
+  return data || []
 }

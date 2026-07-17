@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import {
-  fetchLocaisComEstado, fetchLocaisComVencimento, fetchInicioPeriodoInspecao, fetchHistoricoInspecoes, fetchTiposExtintor
+  fetchLocaisComEstado, fetchLocaisComVencimento, fetchInicioPeriodoInspecao, fetchHistoricoInspecoes, fetchTiposExtintor, fetchOrdensPendentes
 } from '../lib/queries'
 import { calcularConformidade, tipoDivergente } from '../lib/conformidade'
 import { unidadeDoTipo } from '../lib/formato'
@@ -143,7 +143,6 @@ function criarColunasSituacao(tiposExtintor) {
     { key: 'validade_n3', label: 'Val. N3', get: ({ estado }) => formatN3(estado.validade_nivel3) },
     { key: 'status', label: 'Status', get: ({ local, estado }) => [
       tipoDivergente(estado.extintor_tipo, local.planta_tipo_exigido) && 'Alerta',
-      estado.em_manutencao && 'Manutenção',
       estado.reserva_empresa && 'RESERVA'
     ].filter(Boolean).join(', ') || '—' },
     { key: 'equipe', label: 'Equipe', get: ({ estado }) => estado.equipe_ultima_inspecao || '—' },
@@ -186,6 +185,7 @@ export default function Relatorios() {
   const [inicioPeriodo, setInicioPeriodo] = useState(null)
   const [historico, setHistorico] = useState([])
   const [tiposExtintor, setTiposExtintor] = useState([])
+  const [ordensPendentes, setOrdensPendentes] = useState([])
   const [loading, setLoading] = useState(true)
   const [gerando, setGerando] = useState(false)
 
@@ -204,13 +204,15 @@ export default function Relatorios() {
       fetchLocaisComVencimento(),
       fetchInicioPeriodoInspecao(),
       fetchHistoricoInspecoes(),
-      fetchTiposExtintor()
-    ]).then(([locaisData, vencData, periodo, historicoData, tiposData]) => {
+      fetchTiposExtintor(),
+      fetchOrdensPendentes()
+    ]).then(([locaisData, vencData, periodo, historicoData, tiposData, ordensData]) => {
       setLocais(locaisData)
       setVencimentos(vencData)
       setInicioPeriodo(periodo)
       setHistorico(historicoData)
       setTiposExtintor(tiposData)
+      setOrdensPendentes(ordensData)
     }).catch(e => console.error(e))
       .finally(() => setLoading(false))
   }, [])
@@ -240,7 +242,7 @@ export default function Relatorios() {
     { key: 'total', label: 'Total de extintores', valor: linhas.length },
     { key: 'vistoriados', label: 'Vistoriados', valor: linhasVistoriadas.length },
     { key: 'sem_inspecao', label: 'Sem inspeção', valor: linhas.length - linhasVistoriadas.length },
-    { key: 'em_manutencao', label: 'Em manutenção', valor: linhas.filter(l => l.estado.em_manutencao).length },
+    { key: 'em_manutencao', label: 'Em manutenção', valor: ordensPendentes.length },
     { key: 'conforme', label: 'Conforme', valor: linhasConforme.length },
     { key: 'alerta', label: 'Alerta', valor: linhasAlerta.length },
     { key: 'nao_conforme', label: 'Não conforme', valor: linhasNaoConforme.length },

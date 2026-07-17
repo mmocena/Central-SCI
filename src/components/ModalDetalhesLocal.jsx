@@ -94,9 +94,6 @@ export default function ModalDetalhesLocal({ local, slot, estado, onClose, tipos
           </Campo>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {estado.em_manutencao && (
-              <span className="text-xs text-slate-500 bg-slate-100 border border-slate-300 px-2 py-1 rounded-lg">Em manutenção</span>
-            )}
             {estado.reserva_empresa && (
               <span className="text-xs text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1 rounded-lg font-semibold">RESERVA</span>
             )}

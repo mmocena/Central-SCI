@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
-import { fetchLocaisComReserva, fetchLocaisComVencimento, fetchTiposExtintor, fetchEstoqueDeposito, registrarEnvioEstoque, registrarRecebimentoMassa } from '../lib/queries'
+import { fetchLocaisComReserva, fetchLocaisComVencimento, fetchTiposExtintor, fetchEstoqueDeposito, fetchOrdensPendentes, registrarEnvioEstoque, registrarRecebimentoMassa } from '../lib/queries'
 import { unidadeDoTipo } from '../lib/formato'
-import { supabase } from '../lib/supabase'
 import IconeExtintor from '../components/IconeExtintor'
 import ModalLocal from '../components/ModalLocal'
 import { useToast } from '../components/Toast'
@@ -75,12 +74,8 @@ export default function Manutencoes() {
   const responsavel = localStorage.getItem(STORAGE_KEY) || ''
 
   const carregar = useCallback(async () => {
-    const [{ data: ords }, reservasData, vencData, tiposData, estoqueData] = await Promise.all([
-      supabase
-        .from('ordens_manutencao')
-        .select('*, locais(id, numero, edificacao, descricao, planta_tipo_exigido, planta_cap_ext_exigida, tem_slot_a, tem_slot_b)')
-        .eq('status', 'PENDENTE')
-        .order('data_saida', { ascending: false }),
+    const [ords, reservasData, vencData, tiposData, estoqueData] = await Promise.all([
+      fetchOrdensPendentes(),
       fetchLocaisComReserva(),
       fetchLocaisComVencimento(),
       fetchTiposExtintor(),

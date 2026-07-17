@@ -159,16 +159,8 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
       {/* Conteúdo rolável */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
-        {/* Aviso — em manutenção com RESERVA como substituto */}
-        {!modoManutencao && estadoSlot?.em_manutencao && estadoSlot?.reserva_empresa && (
-          <div className="bg-slate-100 border border-slate-300 rounded-xl px-4 py-3 text-xs text-slate-600">
-            O extintor foi enviado para manutenção e tem um <strong className="text-blue-600">RESERVA</strong> como substituto.
-            Registre o recebimento na aba <strong>Manutenções</strong> e substitua o extintor <span className="text-blue-600 font-semibold">RESERVA</span> posteriormente.
-          </div>
-        )}
-
-        {/* Botão de envio para manutenção — só aparece se o slot não estiver já em manutenção e não tiver sido pré-aberto */}
-        {!modoManutencao && !estadoSlot?.em_manutencao && !envioPreAberto && (
+        {/* Botão de envio para manutenção — sempre disponível fora do modo envio (e não pré-aberto) */}
+        {!modoManutencao && !envioPreAberto && (
           <button
             onClick={() => setModoManutencao('envio')}
             className="w-full border border-dashed border-slate-300 bg-white rounded-xl py-3 text-sm text-slate-500 text-center hover:border-slate-400 transition-colors"
@@ -177,8 +169,8 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
           </button>
         )}
 
-        {/* Toggle RESERVA — só aparece fora do modo envio e sem manutenção ativa */}
-        {!modoManutencao && !estadoSlot?.em_manutencao && (
+        {/* Toggle RESERVA — só aparece fora do modo envio */}
+        {!modoManutencao && (
           isReserva ? (
             reservaAtiva ? (
               /* Marcado nesta sessão — pode remover */

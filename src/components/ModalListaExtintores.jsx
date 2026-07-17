@@ -7,7 +7,16 @@ const CORES = {
   azul: 'text-blue-700 bg-blue-50',
 }
 
-function ItemExtintor({ local, slot, estado, corBadge, onSelecionar }) {
+// Só a cor do texto (sem fundo), na mesma cor do badge/número — usada no
+// dado específico do alerta, pra combinar com a cor do card de origem.
+const CORES_TEXTO = {
+  vermelho: 'text-sci-red',
+  verde: 'text-green-700',
+  ambar: 'text-amber-700',
+  azul: 'text-blue-700',
+}
+
+function ItemExtintor({ local, slot, estado, corBadge, corTexto, onSelecionar, detalhe }) {
   return (
     <button
       onClick={() => onSelecionar({ local, slot, estado })}
@@ -19,17 +28,21 @@ function ItemExtintor({ local, slot, estado, corBadge, onSelecionar }) {
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-slate-700 truncate">{local.edificacao}</p>
         {local.descricao && <p className="text-xs text-slate-400 truncate">{local.descricao}</p>}
+        {detalhe && <p className={`text-xs font-medium ${corTexto}`}>{detalhe({ local, slot, estado })}</p>}
       </div>
     </button>
   )
 }
 
-// grupos (opcional): [{ titulo, linhas }] — quando presente, a lista é exibida
-// em seções separadas (ex: vencimento por N2/N3) em vez de uma lista única.
-// Um mesmo item pode aparecer em mais de um grupo; o contador do cabeçalho
-// conta cada local+slot uma única vez.
-export default function ModalListaExtintores({ titulo, linhas, grupos, onClose, onSelecionar, cor = 'vermelho' }) {
+// grupos (opcional): [{ titulo, linhas, detalhe }] — quando presente, a lista é
+// exibida em seções separadas (ex: vencimento por N2/N3) em vez de uma lista
+// única. Um mesmo item pode aparecer em mais de um grupo; o contador do
+// cabeçalho conta cada local+slot uma única vez. `detalhe` (opcional, no modo
+// flat ou por grupo) é uma função (row) => texto, exibida abaixo da descrição
+// do local — ex: o motivo específico do alerta.
+export default function ModalListaExtintores({ titulo, linhas, grupos, onClose, onSelecionar, cor = 'vermelho', detalhe }) {
   const corBadge = CORES[cor] || CORES.vermelho
+  const corTexto = CORES_TEXTO[cor] || CORES_TEXTO.vermelho
 
   const totalUnico = grupos
     ? new Set(grupos.flatMap(g => g.linhas).map(({ local, slot }) => `${local.id}-${slot}`)).size
@@ -60,14 +73,14 @@ export default function ModalListaExtintores({ titulo, linhas, grupos, onClose, 
                 {g.linhas.length === 0 ? (
                   <div className="text-center py-3 text-slate-300 text-xs">Nenhum.</div>
                 ) : g.linhas.map(({ local, slot, estado }) => (
-                  <ItemExtintor key={`${local.id}-${slot}`} local={local} slot={slot} estado={estado} corBadge={corBadge} onSelecionar={onSelecionar} />
+                  <ItemExtintor key={`${local.id}-${slot}`} local={local} slot={slot} estado={estado} corBadge={corBadge} corTexto={corTexto} onSelecionar={onSelecionar} detalhe={g.detalhe} />
                 ))}
               </div>
             ))
           ) : linhas.length === 0 ? (
             <div className="text-center py-8 text-slate-400 text-sm">Nenhum extintor encontrado.</div>
           ) : linhas.map(({ local, slot, estado }) => (
-            <ItemExtintor key={`${local.id}-${slot}`} local={local} slot={slot} estado={estado} corBadge={corBadge} onSelecionar={onSelecionar} />
+            <ItemExtintor key={`${local.id}-${slot}`} local={local} slot={slot} estado={estado} corBadge={corBadge} corTexto={corTexto} onSelecionar={onSelecionar} detalhe={detalhe} />
           ))}
         </div>
       </div>

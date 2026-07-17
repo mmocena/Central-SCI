@@ -30,7 +30,6 @@ function formatarData(iso) {
 export default function LocalCard({ local, onClick, inicioPeriodo, tiposExtintor }) {
   const slots = local.local_estado_atual || []
   const temDoisSlots = local.tem_slot_a && local.tem_slot_b
-  const temManutencao = slots.some(s => s.em_manutencao)
   const temReserva = slots.some(s => s.reserva_empresa)
 
   // Vistoriado no período: todos os slots do local (A e, se houver, B)
@@ -75,11 +74,6 @@ export default function LocalCard({ local, onClick, inicioPeriodo, tiposExtintor
             </span>
           )}
           <span className="text-xs text-sci-muted font-medium">{local.edificacao}</span>
-          {temManutencao && (
-            <span className="text-[10px] bg-slate-100 text-slate-500 border border-slate-300 px-1.5 py-0.5 rounded-full font-medium">
-              Manutenção
-            </span>
-          )}
           {temReserva && (
             <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 px-1.5 py-0.5 rounded-full font-medium">
               RESERVA

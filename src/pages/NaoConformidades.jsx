@@ -109,12 +109,10 @@ export default function NaoConformidades() {
   const linhasTipoDivergente = linhas.filter(l => tipoDivergente(l.estado.extintor_tipo, l.local.planta_tipo_exigido))
 
   const linhasVencidoN2 = linhas.filter(l => {
-    if (l.estado.em_manutencao) return false
     const dias = diasAte(l.estado.validade_nivel2)
     return dias !== null && dias < 0
   })
   const linhasVencidoN3 = linhas.filter(l => {
-    if (l.estado.em_manutencao) return false
     const dias = diasAte(l.estado.validade_nivel3)
     return dias !== null && dias < 0
   })

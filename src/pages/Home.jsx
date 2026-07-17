@@ -86,7 +86,6 @@ export default function Home() {
       if (filtros.situacao) {
         if (!slots.some(s => s.situacao_conformidade === filtros.situacao)) return false
       }
-      if (filtros.status === 'manutencao' && !slots.some(s => s.em_manutencao)) return false
       if (filtros.status === 'reserva' && !slots.some(s => s.reserva_empresa)) return false
       if (filtros.status === 'alerta' && !slots.some(s => tipoDivergente(s.extintor_tipo, local.planta_tipo_exigido))) return false
       return true
@@ -316,12 +315,6 @@ export default function Home() {
             <div className="space-y-2">
               <p className="text-xs text-slate-400 font-medium">Status</p>
               <div className="flex flex-wrap gap-1.5">
-                <button
-                  onClick={() => toggleFiltro('status', 'manutencao')}
-                  className={`btn-option text-xs py-1 px-2.5 ${filtros.status === 'manutencao' ? 'selected' : ''}`}
-                >
-                  Em Manutenção
-                </button>
                 <button
                   onClick={() => toggleFiltro('status', 'reserva')}
                   className={`btn-option text-xs py-1 px-2.5 ${filtros.status === 'reserva' ? 'selected' : ''}`}

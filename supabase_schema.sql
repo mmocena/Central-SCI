@@ -57,7 +57,10 @@ create table local_estado_atual (
   motivo_nao_conformidade text,
   observacoes text,
 
-  -- manutenção
+  -- manutenção — colunas não usadas mais pelas RPCs (o local nunca fica
+  -- vinculado a uma ordem de manutenção; o controle de pendências é feito
+  -- só por ordens_manutencao.status). Mantidas na tabela por segurança,
+  -- sem uso ativo.
   em_manutencao boolean default false,
   ordem_manutencao_id uuid,        -- FK adicionada após criar ordens_manutencao
 
@@ -246,14 +249,17 @@ begin
   values ('logistica_envio', p_local_id, p_slot, v_ordem.id, p_responsavel, p_equipe, p_payload, p_client_op_id)
   on conflict (client_op_id) do nothing;
 
+  -- O local nunca fica "vinculado" à ordem — recebe o substituto como uma
+  -- inspeção normal. O controle de pendência de manutenção é só via
+  -- ordens_manutencao.status, consultado à parte (guia Manutenções).
   insert into local_estado_atual (
     local_id, slot, extintor_tipo, extintor_kg, cap_ext_atual, reserva_empresa,
-    situacao_conformidade, motivo_nao_conformidade, em_manutencao, ordem_manutencao_id,
+    situacao_conformidade, motivo_nao_conformidade,
     validade_nivel2, validade_nivel3, data_ultima_logistica,
     responsavel_ultima_logistica, equipe_ultima_logistica, atualizado_em
   ) values (
     p_local_id, p_slot, p_substituto_tipo, p_substituto_kg, p_substituto_cap_ext, p_substituto_reserva,
-    p_conformidade, p_motivo_nao_conformidade, true, v_ordem.id,
+    p_conformidade, p_motivo_nao_conformidade,
     p_validade_nivel2, p_validade_nivel3, now(), p_responsavel, p_equipe, now()
   )
   on conflict (local_id, slot) do update set
@@ -263,8 +269,6 @@ begin
     reserva_empresa = excluded.reserva_empresa,
     situacao_conformidade = excluded.situacao_conformidade,
     motivo_nao_conformidade = excluded.motivo_nao_conformidade,
-    em_manutencao = excluded.em_manutencao,
-    ordem_manutencao_id = excluded.ordem_manutencao_id,
     validade_nivel2 = excluded.validade_nivel2,
     validade_nivel3 = excluded.validade_nivel3,
     data_ultima_logistica = excluded.data_ultima_logistica,
@@ -328,9 +332,6 @@ begin
     insert into historico_operacoes (modo, local_id, slot, ordem_manutencao_id, responsavel, equipe, payload, client_op_id)
     values ('logistica_retorno', p_local_id, p_slot, p_ordem_id, p_responsavel, p_equipe, jsonb_build_object('destino', 'ESTOQUE'), p_client_op_id)
     on conflict (client_op_id) do nothing;
-
-    update local_estado_atual set em_manutencao = false, ordem_manutencao_id = null, atualizado_em = now()
-    where local_id = p_local_id and slot = p_slot;
   end if;
 end;
 $$;
