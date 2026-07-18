@@ -164,6 +164,47 @@ create table configuracoes (
   valor text
 );
 
+-- Plano de trocas de Tipo entre locais/estoque — só sugestão, não executa
+-- nada sozinho. A pessoa monta o plano antes de ir a campo; a troca física
+-- só se confirma de fato quando a inspeção real é registrada nos locais
+-- envolvidos (ver limpeza automática em registrar_inspecao). Sincronizado
+-- por realtime pra qualquer aparelho ver o mesmo plano.
+create table trocas_planejadas (
+  id uuid primary key default gen_random_uuid(),
+
+  -- destino: o local que precisa do tipo diferente
+  local_id uuid not null references locais(id) on delete cascade,
+  slot char(1) not null check (slot in ('A', 'B')),
+  unique (local_id, slot),
+
+  -- origem: outro local (troca recíproca de campo) OU uma unidade do depósito
+  origem_tipo text not null check (origem_tipo in ('local', 'estoque_sci', 'estoque_reserva')),
+  origem_local_id uuid references locais(id),
+  origem_slot char(1) check (origem_slot in ('A', 'B')),
+  origem_estoque_id uuid references estoque_deposito(id),
+
+  check (
+    (origem_tipo = 'local' and origem_local_id is not null and origem_slot is not null and origem_estoque_id is null)
+    or
+    (origem_tipo in ('estoque_sci', 'estoque_reserva') and origem_estoque_id is not null and origem_local_id is null and origem_slot is null)
+  ),
+  check (origem_local_id is null or origem_local_id is distinct from local_id),
+
+  definido_por text not null,
+  definido_em timestamptz default now()
+);
+
+-- Cada origem (local ou unidade de estoque) só pode estar em um plano por
+-- vez — é isso que faz a opção sumir das listas dos outros locais quando
+-- alguém já a escolheu.
+create unique index trocas_planejadas_origem_local_uk
+  on trocas_planejadas (origem_local_id, origem_slot)
+  where origem_local_id is not null;
+
+create unique index trocas_planejadas_origem_estoque_uk
+  on trocas_planejadas (origem_estoque_id)
+  where origem_estoque_id is not null;
+
 -- ============================================================
 -- Funções (RPC) — cada uma roda em uma única transação, então
 -- nunca fica um passo intermediário gravado sem o resto (ex: ordem
@@ -210,6 +251,13 @@ begin
     responsavel_ultima_inspecao = excluded.responsavel_ultima_inspecao,
     equipe_ultima_inspecao = excluded.equipe_ultima_inspecao,
     atualizado_em = excluded.atualizado_em;
+
+  -- A troca física (se houvesse alguma planejada envolvendo este local,
+  -- como destino ou como origem) já aconteceu de verdade agora — o plano
+  -- não faz mais sentido, some sozinho.
+  delete from trocas_planejadas
+  where (local_id = p_local_id and slot = p_slot)
+     or (origem_local_id = p_local_id and origem_slot = p_slot);
 end;
 $$;
 
@@ -275,6 +323,12 @@ begin
     responsavel_ultima_logistica = excluded.responsavel_ultima_logistica,
     equipe_ultima_logistica = excluded.equipe_ultima_logistica,
     atualizado_em = excluded.atualizado_em;
+
+  -- Idem registrar_inspecao: qualquer plano de troca envolvendo este local
+  -- (destino ou origem) já não faz mais sentido — o extintor mudou de verdade.
+  delete from trocas_planejadas
+  where (local_id = p_local_id and slot = p_slot)
+     or (origem_local_id = p_local_id and origem_slot = p_slot);
 
   if p_desconta_estoque and not v_ordem.estoque_descontado then
     select id, quantidade into v_estoque_id, v_qtd
@@ -342,10 +396,16 @@ $$;
 -- Sem isso na publicação, as telas não atualizam sozinhas quando outro
 -- dispositivo grava algo — cada uma fica presa ao estado do carregamento.
 -- ============================================================
-alter publication supabase_realtime add table if not exists local_estado_atual;
-alter publication supabase_realtime add table if not exists ordens_manutencao;
-alter publication supabase_realtime add table if not exists configuracoes;
-alter publication supabase_realtime add table if not exists historico_operacoes;
+-- ADD TABLE não aceita IF NOT EXISTS — rodar cada linha só uma vez (repetir
+-- dá erro "already member of publication"). Esta lista documenta o estado
+-- esperado da publicação; para uma tabela nova, adicionar uma linha aqui e
+-- rodar só ela na migração.
+alter publication supabase_realtime add table local_estado_atual;
+alter publication supabase_realtime add table ordens_manutencao;
+alter publication supabase_realtime add table configuracoes;
+alter publication supabase_realtime add table historico_operacoes;
+alter publication supabase_realtime add table trocas_planejadas;
+alter publication supabase_realtime add table estoque_deposito;
 
 -- ============================================================
 -- Dados iniciais de exemplo (remover em produção)

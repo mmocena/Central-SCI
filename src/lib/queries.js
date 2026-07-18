@@ -318,6 +318,8 @@ export const HANDLERS_FILA = {
   salvarRegistroAdmin: _salvarRegistroAdmin,
   atualizarCampoAdmin: _atualizarCampoAdmin,
   excluirRegistroAdmin: _excluirRegistroAdmin,
+  definirTrocaPlanejada: _definirTrocaPlanejada,
+  cancelarTrocaPlanejada: _cancelarTrocaPlanejada,
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -425,4 +427,51 @@ export async function fetchOrdensPendentes() {
 
   if (error) throw error
   return data || []
+}
+
+// ────────────────────────────────────────────────────────────────
+// Plano de trocas de Tipo entre locais/estoque (guia Não Conformidades) —
+// só sugestão, nunca executa nada sozinho. Ver trocas_planejadas no schema.
+// ────────────────────────────────────────────────────────────────
+
+export async function fetchTrocasPlanejadas() {
+  const { data, error } = await supabase
+    .from('trocas_planejadas')
+    .select(`
+      *,
+      origem_local:locais!trocas_planejadas_origem_local_id_fkey(id, numero, edificacao),
+      origem_estoque:estoque_deposito(id, tipo, kg, categoria)
+    `)
+
+  if (error) throw error
+  return data || []
+}
+
+// insert simples — a unicidade de (local_id,slot) e da origem já é
+// garantida pelo banco; um conflito aqui vira erro visível na hora
+// (não é algo pra tentar de novo silenciosamente depois).
+async function _definirTrocaPlanejada({ localId, slot, origemTipo, origemLocalId, origemSlot, origemEstoqueId, responsavel }) {
+  const { error } = await supabase.from('trocas_planejadas').insert({
+    local_id: localId,
+    slot,
+    origem_tipo: origemTipo,
+    origem_local_id: origemLocalId ?? null,
+    origem_slot: origemSlot ?? null,
+    origem_estoque_id: origemEstoqueId ?? null,
+    definido_por: responsavel
+  })
+  if (error) throw error
+}
+
+export async function definirTrocaPlanejada(args) {
+  return executarOuEnfileirar('definirTrocaPlanejada', args, _definirTrocaPlanejada)
+}
+
+async function _cancelarTrocaPlanejada(id) {
+  const { error } = await supabase.from('trocas_planejadas').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function cancelarTrocaPlanejada(id) {
+  return executarOuEnfileirar('cancelarTrocaPlanejada', id, _cancelarTrocaPlanejada)
 }
