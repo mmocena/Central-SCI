@@ -91,6 +91,16 @@ function didParseCellComCores(colunas) {
     if (data.section !== 'body') return
     const coluna = colunas[data.column.index]
     if (!coluna) return
+
+    // Coluna Nº — fundo cinza claro com o número em vermelho e negrito,
+    // igual ao destaque usado nas tabelas do app (fora do PDF).
+    if (coluna.key === 'numero') {
+      data.cell.styles.fillColor = [241, 245, 249]
+      data.cell.styles.textColor = [220, 38, 38]
+      data.cell.styles.fontStyle = 'bold'
+      return
+    }
+
     const estilo = estiloCelulaPdf(coluna.key, String(data.cell.raw))
     if (!estilo) return
     if (estilo.text) data.cell.styles.textColor = estilo.text
@@ -776,6 +786,9 @@ export default function Relatorios() {
       head: [colunasAtivas.map(c => c.label)],
       body: linhasParaTabela.map(linha => colunasAtivas.map(c => c.get(linha))),
       theme: 'grid',
+      // Uma linha inteira pula pra próxima página em vez de ser cortada
+      // no meio (ex: a célula de duas linhas de Local).
+      rowPageBreak: 'avoid',
       headStyles: { fillColor: [220, 38, 38], halign: 'center', valign: 'middle' },
       margin: { left: margem, right: margem },
       styles: { fontSize: 8, halign: 'center', valign: 'middle' },
