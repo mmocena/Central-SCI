@@ -4,17 +4,6 @@ import { useFilaOffline } from '../lib/offlineQueue'
 
 const MENU_ITEMS = [
   {
-    to: '/menu',
-    label: 'Menu',
-    icon: (active) => (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#dc2626' : '#64748b'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="4" y1="6" x2="20" y2="6"/>
-        <line x1="4" y1="12" x2="20" y2="12"/>
-        <line x1="4" y1="18" x2="20" y2="18"/>
-      </svg>
-    ),
-  },
-  {
     to: '/inspecao',
     label: 'Inspeção',
     icon: (active) => (
@@ -43,47 +32,12 @@ const MENU_ITEMS = [
     ),
   },
   {
-    to: '/situacao',
-    label: 'Situação',
-    icon: (active) => (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#dc2626' : '#64748b'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
-        <rect x="9" y="3" width="6" height="4" rx="1"/>
-        <line x1="9" y1="12" x2="15" y2="12"/>
-        <line x1="9" y1="16" x2="13" y2="16"/>
-      </svg>
-    ),
-  },
-  {
-    to: '/nao-conformidades',
-    label: 'Não Conformidades',
-    icon: (active) => (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#dc2626' : '#64748b'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-        <line x1="12" y1="9" x2="12" y2="13"/>
-        <line x1="12" y1="17" x2="12.01" y2="17"/>
-      </svg>
-    ),
-  },
-  {
     to: '/historico',
     label: 'Histórico de Inspeções',
     icon: (active) => (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#dc2626' : '#64748b'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="9"/>
         <polyline points="12 7 12 12 15.5 14"/>
-      </svg>
-    ),
-  },
-  {
-    to: '/relatorios',
-    label: 'Relatórios',
-    icon: (active) => (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#dc2626' : '#64748b'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-        <polyline points="14 2 14 8 20 8"/>
-        <line x1="8" y1="13" x2="16" y2="13"/>
-        <line x1="8" y1="17" x2="16" y2="17"/>
       </svg>
     ),
   },

@@ -1,6 +1,5 @@
 import { Routes, Route } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
-import Menu from './pages/Menu'
 import Home from './pages/Home'
 import Manutencoes from './pages/Manutencoes'
 import Situacao from './pages/Situacao'
@@ -18,7 +17,6 @@ export default function App() {
       <main className="flex-1 overflow-y-auto">
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/menu" element={<Menu />} />
           <Route path="/inspecao" element={<Home />} />
           <Route path="/manutencoes" element={<Manutencoes />} />
           <Route path="/situacao" element={<Situacao />} />

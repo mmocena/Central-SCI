@@ -141,3 +141,17 @@ export function separarMotivos(motivo) {
 
   return { capExt, sinalizacao, tipoDivergente: tipoDivergenteNoTexto, validadeN2, validadeN3, operacional: resto.length > 0 }
 }
+
+// Igual ao "resto" calculado em separarMotivos, mas preservando a pontuação
+// pra poder separar por vírgula e reconhecer cada fator de não
+// operacionalidade individualmente (em vez de só um boolean).
+export function fatoresOperacionaisDoMotivo(motivo) {
+  if (!motivo) return []
+  const resto = motivo
+    .replaceAll(MOTIVO_CAP_EXT, '')
+    .replaceAll(MOTIVO_SINALIZACAO, '')
+    .replaceAll(MOTIVO_VALIDADE_N2, '')
+    .replaceAll(MOTIVO_VALIDADE_N3, '')
+    .replace(REGEX_TIPO_DIVERGENTE, '')
+  return resto.split(',').map(s => s.trim()).filter(Boolean)
+}

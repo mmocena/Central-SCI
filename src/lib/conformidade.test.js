@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcularConformidade, motivosNaoConformidade, textoObservacaoAutomatica, separarMotivos, n2Vencida, n3Vencida, tipoDivergente, textoTipoDivergente } from './conformidade'
+import { calcularConformidade, motivosNaoConformidade, textoObservacaoAutomatica, separarMotivos, fatoresOperacionaisDoMotivo, n2Vencida, n3Vencida, tipoDivergente, textoTipoDivergente } from './conformidade'
 
 describe('calcularConformidade', () => {
   it('só existem duas situações possíveis: conforme e nao_conforme', () => {
@@ -249,6 +249,32 @@ describe('separarMotivos', () => {
     expect(separarMotivos(motivo)).toEqual({ ...VAZIO, capExt: true, tipoDivergente: true })
     // chamar duas vezes seguidas garante que o regex sem flag "g" não guarda lastIndex entre chamadas
     expect(separarMotivos(motivo).tipoDivergente).toBe(true)
+  })
+})
+
+describe('fatoresOperacionaisDoMotivo', () => {
+  it('motivo vazio/nulo não retorna fatores', () => {
+    expect(fatoresOperacionaisDoMotivo(null)).toEqual([])
+    expect(fatoresOperacionaisDoMotivo('')).toEqual([])
+  })
+
+  it('separa um único fator', () => {
+    expect(fatoresOperacionaisDoMotivo('Etiqueta de inspeção ausente ou ilegível'))
+      .toEqual(['Etiqueta de inspeção ausente ou ilegível'])
+  })
+
+  it('separa múltiplos fatores por vírgula', () => {
+    expect(fatoresOperacionaisDoMotivo('Lacre violado, Manômetro zerado'))
+      .toEqual(['Lacre violado', 'Manômetro zerado'])
+  })
+
+  it('remove as categorias fixas e mantém só os fatores de texto livre', () => {
+    const motivo = 'Validade Nível 2 vencida, Lacre violado, Manômetro zerado, Sinalização não conforme'
+    expect(fatoresOperacionaisDoMotivo(motivo)).toEqual(['Lacre violado', 'Manômetro zerado'])
+  })
+
+  it('motivo só com categorias fixas não retorna fatores', () => {
+    expect(fatoresOperacionaisDoMotivo('Sinalização não conforme')).toEqual([])
   })
 })
 

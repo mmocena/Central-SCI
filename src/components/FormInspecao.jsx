@@ -102,7 +102,7 @@ function SlotBlock({ label, descricao, tiposExtintor, fatores, anosN3, form, set
         </div>
         {form[`operacional_${sk}`] === false && fatores.length > 0 && (
           <div className="mt-2 space-y-2 pl-3 border-l-2 border-red-200">
-            <p className="text-xs text-slate-500 font-medium">Fator(es) não operacionais:</p>
+            <p className="text-xs text-slate-500 font-medium">Fator(es) não operacionais: <span className="text-sci-red">obrigatório</span></p>
             {fatores.map(f => {
               const sel = form[`fatores_nc_${sk}`].includes(f.id)
               return (
@@ -176,7 +176,9 @@ export default function FormInspecao({
     if (!form.equipe) return alert('Selecione a equipe.')
     if (local.planta_cap_ext_exigida && form.cap_ext_ok === null) return alert('Informe a Capacidade Extintora conjunta.')
     if (form.operacional_a === null) return alert('Informe o resultado da inspeção do Extintor A.')
+    if (form.operacional_a === false && fatores.length > 0 && form.fatores_nc_a.length === 0) return alert('Selecione ao menos um fator de não conformidade do Extintor A.')
     if (form.operacional_b === null) return alert('Informe o resultado da inspeção do Extintor B.')
+    if (form.operacional_b === false && fatores.length > 0 && form.fatores_nc_b.length === 0) return alert('Selecione ao menos um fator de não conformidade do Extintor B.')
     if (form.sinalizacao_ok === null) return alert('Informe a situação da sinalização.')
 
     const motivosA = motivosSlotDual('a')
@@ -218,6 +220,7 @@ export default function FormInspecao({
     if (!form.equipe) return alert('Selecione a equipe.')
     if (local.planta_cap_ext_exigida && form.cap_ext_ok === null) return alert('Informe a Capacidade Extintora.')
     if (form.operacional === null) return alert('Informe o resultado da inspeção.')
+    if (form.operacional === false && fatores.length > 0 && form.fatores_nc.length === 0) return alert('Selecione ao menos um fator de não conformidade.')
     if (form.sinalizacao_ok === null) return alert('Informe a situação da sinalização.')
 
     const motivos = motivosNaoConformidade({
@@ -470,7 +473,7 @@ export default function FormInspecao({
         </div>
         {form.operacional === false && fatores.length > 0 && (
           <div className="mt-2 space-y-2 pl-3 border-l-2 border-red-200">
-            <p className="text-xs text-slate-500 font-medium">Fator(es) não operacionais:</p>
+            <p className="text-xs text-slate-500 font-medium">Fator(es) não operacionais: <span className="text-sci-red">obrigatório</span></p>
             {fatores.map(f => {
               const selecionado = form.fatores_nc.includes(f.id)
               return (
