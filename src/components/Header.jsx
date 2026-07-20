@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Link } from 'react-router-dom'
 import { useFilaOffline } from '../lib/offlineQueue'
+import { useInstalado, useInstallPrompt, isIOS } from '../lib/pwaInstall'
 
 const MENU_ITEMS = [
   {
@@ -65,9 +66,36 @@ const MENU_ITEMS = [
   },
 ]
 
+function ModalInstalarIOS({ onClose }) {
+  return (
+    <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <p className="font-semibold text-sci-text">Instalar no iPhone/iPad</p>
+          <button onClick={onClose} className="text-sci-muted text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 shrink-0">×</button>
+        </div>
+        <ol className="space-y-3 text-sm text-slate-600 list-decimal list-inside">
+          <li>Toque no ícone de <strong>Compartilhar</strong> (quadrado com uma seta pra cima) na barra do Safari.</li>
+          <li>Role a lista de opções e toque em <strong>"Adicionar à Tela de Início"</strong>.</li>
+          <li>Toque em <strong>"Adicionar"</strong> no canto superior direito.</li>
+        </ol>
+        <p className="text-xs text-slate-400">
+          O app vai aparecer na tela inicial do aparelho e abrir sem a barra de endereço do navegador, como um aplicativo normal.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 export default function Header() {
   const [aberto, setAberto] = useState(false)
+  const [modalIosAberto, setModalIosAberto] = useState(false)
+  const [dispensado, setDispensado] = useState(false)
   const pendentes = useFilaOffline()
+  const instalado = useInstalado()
+  const { podeInstalar, instalar } = useInstallPrompt()
+  const mostrarInstalarAndroid = podeInstalar && !instalado
+  const mostrarInstalarIOS = isIOS() && !instalado
 
   return (
     <>
@@ -133,6 +161,35 @@ export default function Header() {
           ))}
         </div>
       )}
+
+      {/* Botão flutuante de instalação — fixo no fim da tela, com um
+          esmaecido em gradiente branco atrás pra não brigar com o conteúdo. */}
+      {(mostrarInstalarAndroid || mostrarInstalarIOS) && !dispensado && (
+        <div className="fixed bottom-0 inset-x-0 z-50 flex justify-center pt-12 pb-5 px-4 bg-gradient-to-t from-white via-white/90 to-transparent backdrop-blur-sm pointer-events-none">
+          <div className="pointer-events-auto flex items-center gap-1 bg-sci-red text-white pl-5 pr-2 py-3 rounded-full shadow-lg">
+            <button
+              onClick={mostrarInstalarAndroid ? instalar : () => setModalIosAberto(true)}
+              className="flex items-center gap-2 text-sm font-semibold"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              {mostrarInstalarAndroid ? 'Instalar app' : 'Instalar no iPhone'}
+            </button>
+            <button
+              onClick={() => setDispensado(true)}
+              aria-label="Dispensar"
+              className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-lg leading-none hover:bg-white/20 transition-colors"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
+      {modalIosAberto && <ModalInstalarIOS onClose={() => setModalIosAberto(false)} />}
     </>
   )
 }
