@@ -20,21 +20,28 @@ export function useInstalado() {
 // dispara quando o navegador considera o site instalável (manifest válido,
 // ícones corretos, service worker registrado). Sem suporte no Safari/iOS.
 export function useInstallPrompt() {
-  const [evento, setEvento] = useState(null)
+  // O evento pode já ter sido capturado antes de este componente montar
+  // (ver script inline em index.html) — usa ele como valor inicial.
+  const [evento, setEvento] = useState(() => window.__deferredInstallPrompt || null)
 
   useEffect(() => {
+    if (window.__deferredInstallPrompt && !evento) setEvento(window.__deferredInstallPrompt)
+
     function handler(e) {
       e.preventDefault()
+      window.__deferredInstallPrompt = e
       setEvento(e)
     }
     window.addEventListener('beforeinstallprompt', handler)
     return () => window.removeEventListener('beforeinstallprompt', handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function instalar() {
     if (!evento) return false
     evento.prompt()
     const { outcome } = await evento.userChoice
+    window.__deferredInstallPrompt = null
     setEvento(null)
     return outcome === 'accepted'
   }

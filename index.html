@@ -9,6 +9,16 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <script>
+      // Captura o mais cedo possível, fora do React — o Chrome pode disparar
+      // esse evento antes do app montar, e um listener só dentro de um
+      // useEffect perderia o evento nesse caso.
+      window.__deferredInstallPrompt = null
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault()
+        window.__deferredInstallPrompt = e
+      })
+    </script>
   </head>
   <body>
     <div id="root"></div>

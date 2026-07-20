@@ -80,7 +80,7 @@ function ModalInstalarIOS({ onClose }) {
           <li>Toque em <strong>"Adicionar"</strong> no canto superior direito.</li>
         </ol>
         <p className="text-xs text-slate-400">
-          O app vai aparecer na tela inicial do aparelho e abrir sem a barra de endereço do navegador, como um aplicativo normal.
+          O app vai aparecer na tela inicial do seu aparelho.
         </p>
       </div>
     </div>
