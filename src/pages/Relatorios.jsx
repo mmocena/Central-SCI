@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import {
-  fetchLocaisComEstado, fetchInicioPeriodoInspecao, fetchHistoricoInspecoes, fetchTiposExtintor, fetchOrdensPendentes
+  fetchLocaisComEstado, fetchInicioPeriodoInspecao, fetchHistoricoInspecoes, fetchTiposExtintor, fetchOrdensPendentes, fetchEstoqueDeposito
 } from '../lib/queries'
 import { calcularConformidade, tipoDivergente, separarMotivos, fatoresOperacionaisDoMotivo } from '../lib/conformidade'
 import { unidadeDoTipo } from '../lib/formato'
@@ -71,6 +71,20 @@ const COR_TIPO_PDF = [
   { teste: /pqs abc/i, text: [109, 40, 217], fill: [245, 243, 255] },
   { teste: /água/i,    text: [162, 28, 175], fill: [253, 244, 255] },
 ]
+
+const CHUMBO_PDF = [51, 65, 85]
+
+// Encurta um texto com "…" no final se ele não couber na largura dada —
+// evita que rótulos longos (ex: nome de um fator de não operacionalidade)
+// invadam visualmente o valor ao lado.
+function truncarTexto(doc, texto, larguraMax) {
+  if (doc.getTextWidth(texto) <= larguraMax) return texto
+  let t = texto
+  while (t.length > 1 && doc.getTextWidth(t + '…') > larguraMax) {
+    t = t.slice(0, -1)
+  }
+  return t + '…'
+}
 
 // Decide a cor de uma célula do corpo da tabela a partir da coluna (key) e
 // do texto exibido — reproduz no PDF as mesmas etiquetas coloridas do app.
@@ -223,6 +237,28 @@ function CardConformidadeIndicador({ ativo, onClick, conforme, naoConforme, semI
   )
 }
 
+// Mesmo agrupamento da guia Depósito (SCI Operacional/Não operacional e
+// RESERVA), somando quantidades — igual ao CardConformidadeIndicador em formato.
+function CardEstoqueIndicador({ ativo, onClick, sciOk, sciNok, reserva }) {
+  const total = sciOk + sciNok + reserva
+  return (
+    <button onClick={onClick} className={`relative w-full p-4 rounded-2xl border border-slate-200 bg-white shadow-sm text-left transition-opacity ${ativo ? '' : 'opacity-40'}`}>
+      <SeloAtivo ativo={ativo} />
+      <p className="text-[11px] text-slate-500 leading-tight mb-2">Estoque / Depósito</p>
+      <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden flex gap-0.5 mb-3">
+        {sciOk > 0 && <div className="h-full bg-green-500" style={{ width: `${(sciOk / total) * 100}%` }} />}
+        {sciNok > 0 && <div className="h-full bg-amber-400" style={{ width: `${(sciNok / total) * 100}%` }} />}
+        {reserva > 0 && <div className="h-full bg-blue-400 rounded-full" style={{ width: `${(reserva / total) * 100}%` }} />}
+      </div>
+      <div className="flex items-center gap-4 text-xs text-slate-600 flex-wrap">
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />SCI Operacional <strong className="text-sci-text">{sciOk}</strong></span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />SCI Não operacional <strong className="text-sci-text">{sciNok}</strong></span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />RESERVA <strong className="text-sci-text">{reserva}</strong></span>
+      </div>
+    </button>
+  )
+}
+
 function CardIndicador({ ativo, onClick, label, valor, cls }) {
   return (
     <button onClick={onClick} className={`relative w-full p-3 rounded-2xl border border-slate-200 bg-white shadow-sm text-left transition-opacity ${ativo ? '' : 'opacity-40'}`}>
@@ -328,6 +364,7 @@ export default function Relatorios() {
   const [historico, setHistorico] = useState([])
   const [tiposExtintor, setTiposExtintor] = useState([])
   const [ordensPendentes, setOrdensPendentes] = useState([])
+  const [estoque, setEstoque] = useState([])
   const [loading, setLoading] = useState(true)
   const [gerando, setGerando] = useState(false)
   const [previewAberto, setPreviewAberto] = useState(false)
@@ -348,13 +385,15 @@ export default function Relatorios() {
       fetchInicioPeriodoInspecao(),
       fetchHistoricoInspecoes(),
       fetchTiposExtintor(),
-      fetchOrdensPendentes()
-    ]).then(([locaisData, periodo, historicoData, tiposData, ordensData]) => {
+      fetchOrdensPendentes(),
+      fetchEstoqueDeposito()
+    ]).then(([locaisData, periodo, historicoData, tiposData, ordensData, estoqueData]) => {
       setLocais(locaisData)
       setInicioPeriodo(periodo)
       setHistorico(historicoData)
       setTiposExtintor(tiposData)
       setOrdensPendentes(ordensData)
+      setEstoque(estoqueData)
     }).catch(e => console.error(e))
       .finally(() => setLoading(false))
   }, [])
@@ -418,6 +457,27 @@ export default function Relatorios() {
     { label: 'Sinalização', valor: linhasNaoConforme.filter(l => separarMotivos(l.estado.motivo_nao_conformidade).sinalizacao).length },
   ].filter(it => it.valor > 0)
 
+  // Estoque/Depósito — mesmo agrupamento usado na guia Depósito (SCI
+  // operacional/não operacional e RESERVA), somando as quantidades. Cada
+  // linha ganha "chips" com a quebra por tipo/kg, coloridos como no resto
+  // do app — cada chip é atômico (nunca quebra "tipo/kg" da quantidade).
+  function chipsTipoKg(itensEstoque) {
+    return itensEstoque
+      .filter(e => e.quantidade > 0)
+      .map(e => ({
+        texto: `${e.tipo} ${e.kg}${unidadeDoTipo(e.tipo, tiposExtintor)}: ${e.quantidade}`,
+        cor: COR_TIPO_PDF.find(t => t.teste.test(e.tipo)) || { text: [71, 85, 105], fill: [241, 245, 249] }
+      }))
+  }
+  const estoqueSciOk = estoque.filter(e => e.categoria === 'SCI' && e.operacional).reduce((s, e) => s + e.quantidade, 0)
+  const estoqueSciNok = estoque.filter(e => e.categoria === 'SCI' && !e.operacional).reduce((s, e) => s + e.quantidade, 0)
+  const estoqueReservaTotal = estoque.filter(e => e.categoria === 'RESERVA').reduce((s, e) => s + e.quantidade, 0)
+  const DADOS_ESTOQUE = [
+    { label: 'SCI — Operacional', valor: estoqueSciOk, chips: chipsTipoKg(estoque.filter(e => e.categoria === 'SCI' && e.operacional)), cor: CHUMBO_PDF },
+    { label: 'SCI — Não operacional', valor: estoqueSciNok, chips: chipsTipoKg(estoque.filter(e => e.categoria === 'SCI' && !e.operacional)), cor: CHUMBO_PDF },
+    { label: 'RESERVA', valor: estoqueReservaTotal, chips: chipsTipoKg(estoque.filter(e => e.categoria === 'RESERVA')), cor: [37, 99, 235] },
+  ].filter(it => it.valor > 0)
+
   // "Extintores em campo" e "Conformidade" viram gráficos de rosca no PDF em
   // vez de cards — cada array é uma fatia (label/valor/cor).
   const DADOS_GRAFICO_CAMPO = [
@@ -439,13 +499,7 @@ export default function Relatorios() {
     { label: 'Validade N3 — este ano', valor: linhasVencendoN3.length, grupo: 'validade_n3' },
   ]
 
-  // Demais indicadores continuam como cards simples — "cor" reproduz a
-  // mesma cor usada no Dashboard.
-  const CARDS_PDF = [
-    { label: 'Em manutenção', valor: ordensPendentes.length, grupo: 'em_manutencao', cor: [100, 116, 139] },
-    { label: 'RESERVA em campo', valor: linhasReserva.length, grupo: 'reserva', cor: [37, 99, 235] },
-  ]
-  const GRUPOS_INDICADORES = ['campo', 'conformidade', 'tipo_divergente', 'validade_n2', 'validade_n3', 'em_manutencao', 'reserva']
+  const GRUPOS_INDICADORES = ['campo', 'conformidade', 'estoque', 'tipo_divergente', 'validade_n2', 'validade_n3', 'em_manutencao', 'reserva']
 
   const [cardsAtivos, setCardsAtivos] = useState(() => new Set(GRUPOS_INDICADORES))
   const [colunasSituacaoAtivas, setColunasSituacaoAtivas] = useState(() => new Set(COLUNAS_SITUACAO.map(c => c.key)))
@@ -481,10 +535,12 @@ export default function Relatorios() {
     ? COLUNAS_SITUACAO.filter(c => colunasSituacaoAtivas.has(c.key))
     : COLUNAS_HISTORICO.filter(c => colunasHistoricoAtivas.has(c.key))
   const linhasParaTabela = modoLista === 'situacao' ? linhas : historicoFiltrado
-  const cardsSelecionados = modoLista === 'situacao' ? CARDS_PDF.filter(c => cardsAtivos.has(c.grupo)) : []
   const alertaSelecionados = modoLista === 'situacao' ? ALERTA_PDF.filter(c => cardsAtivos.has(c.grupo)) : []
   const graficoCampoAtivo = modoLista === 'situacao' && cardsAtivos.has('campo')
   const graficoConformidadeAtivo = modoLista === 'situacao' && cardsAtivos.has('conformidade')
+  const estoqueAtivo = modoLista === 'situacao' && cardsAtivos.has('estoque') && DADOS_ESTOQUE.length > 0
+  const emManutencaoAtivo = modoLista === 'situacao' && cardsAtivos.has('em_manutencao')
+  const reservaCampoAtivo = modoLista === 'situacao' && cardsAtivos.has('reserva')
 
   // Desenha uma fatia de rosca por vez, em polígono (leque de triângulos a
   // partir do centro) — jsPDF não tem arco/pizza nativo, então o caminho é
@@ -593,19 +649,134 @@ export default function Relatorios() {
     }
   }
 
-  // Card de lista (título + total no topo, uma linha por item abaixo,
-  // separadas por um traço fino) — usado pra "Alertas" e "Não conformidade",
-  // no lugar de vários cards soltos com um número cada.
-  function alturaCardLista(qtdItens) {
-    return 12 + qtdItens * 6.5 + 4
+  // Posiciona uma linha de "chips" (retângulo colorido + texto) que quebra
+  // pra próxima linha quando não cabe — cada chip é atômico, nunca quebra
+  // no meio (ex: "CO² 6kg: 9" não separa o tipo/kg da quantidade). Só
+  // calcula posições (não desenha), pra poder reaproveitar tanto na medida
+  // de altura quanto no desenho de verdade.
+  function layoutChips(doc, w, chips) {
+    doc.setFontSize(6.5)
+    const alturaChip = 4.3
+    const gap = 1.5
+    const padX = 1.3
+    let cx = 0
+    let cy = 0
+    const posicionados = chips.map(chip => {
+      const largura = doc.getTextWidth(chip.texto) + padX * 2
+      if (cx + largura > w && cx > 0) {
+        cx = 0
+        cy += alturaChip + 1
+      }
+      const pos = { ...chip, x: cx, y: cy, largura }
+      cx += largura + gap
+      return pos
+    })
+    return { posicionados, alturaTotal: cy + alturaChip }
   }
 
-  function desenharCardLista(doc, x, y, w, h, titulo, itens, corTotal, valorPrimeiro) {
+  // Retângulo com raio independente por canto — jsPDF só desenha raio
+  // uniforme nos 4 cantos, então reconstrói o mesmo algoritmo (curva Bézier
+  // aproximando um quarto de círculo, com o fator "kappa") permitindo cada
+  // canto ter seu próprio raio (0 = canto reto).
+  function desenharRetanguloCantos(doc, x, y, w, h, rTL, rTR, rBR, rBL, style) {
+    const k = 0.5523
+    doc.lines([
+      [w - rTL - rTR, 0],
+      [rTR * k, 0, rTR, rTR - rTR * k, rTR, rTR],
+      [0, h - rTR - rBR],
+      [0, rBR * k, -rBR + rBR * k, rBR, -rBR, rBR],
+      [-(w - rBR - rBL), 0],
+      [-rBL * k, 0, -rBL, -rBL + rBL * k, -rBL, -rBL],
+      [0, -(h - rBL - rTL)],
+      [0, -rTL * k, rTL - rTL * k, -rTL, rTL, -rTL]
+    ], x + rTL, y, [1, 1], style, true)
+  }
+
+  // Chip "composto" — dois trechos colados formando uma única pílula: o
+  // local (vermelho/cinza claro, igual à coluna Nº da tabela) com bordas
+  // arredondadas só à esquerda, e o tipo/kg (colorido por tipo) com bordas
+  // arredondadas só à direita. Usado na lista de locais em RESERVA.
+  function layoutChipsCompostos(doc, w, itens) {
+    doc.setFontSize(6.5)
+    const alturaChip = 4.3
+    const gap = 1.5
+    const padX = 1.3
+    let cx = 0
+    let cy = 0
+    const posicionados = itens.map(it => {
+      const localW = doc.getTextWidth(it.local) + padX * 2
+      const tipoW = doc.getTextWidth(it.tipoKg) + padX * 2
+      const totalW = localW + tipoW
+      if (cx + totalW > w && cx > 0) {
+        cx = 0
+        cy += alturaChip + 1
+      }
+      const pos = { ...it, x: cx, y: cy, localW, tipoW }
+      cx += totalW + gap
+      return pos
+    })
+    return { posicionados, alturaTotal: cy + alturaChip }
+  }
+
+  function desenharChipsCompostos(doc, x, y, posicionados) {
+    const r = 0.8
+    const alturaChip = 4.3
+    posicionados.forEach(it => {
+      const px = x + it.x
+      const py = y + it.y
+
+      doc.setFillColor(241, 245, 249)
+      desenharRetanguloCantos(doc, px, py, it.localW, alturaChip, r, 0, 0, r, 'F')
+      doc.setFillColor(...it.corTipo.fill)
+      desenharRetanguloCantos(doc, px + it.localW, py, it.tipoW, alturaChip, 0, r, r, 0, 'F')
+
+      doc.setFont(undefined, 'bold')
+      doc.setFontSize(6.5)
+      doc.setTextColor(220, 38, 38)
+      doc.text(it.local, px + 1.3, py + alturaChip - 1.1)
+
+      doc.setFont(undefined, 'normal')
+      doc.setTextColor(...it.corTipo.text)
+      doc.text(it.tipoKg, px + it.localW + 1.3, py + alturaChip - 1.1)
+    })
+  }
+
+  // Card de lista (título + total no topo, uma linha por item abaixo,
+  // separadas por um traço fino) — usado pra "Alertas", "Não conformidade",
+  // "Estoque/Depósito", "Em manutenção" e "RESERVA em campo", no lugar de
+  // vários cards soltos com um número cada. Cada item pode ter "chips" (ex:
+  // quebra por tipo/kg) numa segunda linha; o card também pode ter "chips"
+  // gerais direto abaixo do cabeçalho (sem itens de linha, ex: lista de
+  // locais em RESERVA) e uma mensagem centralizada pra quando não há nada.
+  // A altura depende do texto real (pode quebrar em mais de uma linha),
+  // por isso depende de `doc` e da largura final da coluna.
+  function alturaCardLista(doc, itens, w, opts = {}) {
+    let h = 12 + 6.5
+    itens.forEach(it => {
+      h += 6.5
+      if (it.chips && it.chips.length) {
+        h += layoutChips(doc, w - 10, it.chips).alturaTotal + 1
+      }
+    })
+    const temChipsGerais = (opts.chips && opts.chips.length) || (opts.chipsCompostos && opts.chipsCompostos.length)
+    if (opts.chips && opts.chips.length) {
+      h += layoutChips(doc, w - 10, opts.chips).alturaTotal + 1
+    }
+    if (opts.chipsCompostos && opts.chipsCompostos.length) {
+      h += layoutChipsCompostos(doc, w - 10, opts.chipsCompostos).alturaTotal + 1
+    }
+    if (itens.length === 0 && !temChipsGerais && opts.mensagemVazia) {
+      h = Math.max(h, 26)
+    }
+    return h
+  }
+
+  function desenharCardLista(doc, x, y, w, h, titulo, itens, corTotal, valorPrimeiro, totalOverride, opts = {}) {
     doc.setDrawColor(226, 232, 240)
     doc.setFillColor(255, 255, 255)
     doc.roundedRect(x, y, w, h, 3, 3, 'FD')
 
-    const totalGeral = itens.reduce((s, it) => s + it.valor, 0)
+    const totalGeral = totalOverride != null ? totalOverride : itens.reduce((s, it) => s + it.valor, 0)
     doc.setFont(undefined, 'bold')
     doc.setFontSize(11)
     doc.setTextColor(...corTotal)
@@ -616,30 +787,77 @@ export default function Relatorios() {
     doc.setTextColor(100, 116, 139)
     doc.text(titulo, x + 5 + doc.getTextWidth(String(totalGeral)) + 2.5, y + 8)
 
-    let ly = y + 15.5
+    const temChipsGerais = (opts.chips && opts.chips.length) || (opts.chipsCompostos && opts.chipsCompostos.length)
+    if (itens.length === 0 && !temChipsGerais) {
+      if (opts.mensagemVazia) {
+        doc.setFont(undefined, 'normal')
+        doc.setFontSize(7)
+        doc.setTextColor(148, 163, 184)
+        doc.text(opts.mensagemVazia, x + w / 2, y + h / 2 + 6, { align: 'center' })
+      }
+      return
+    }
+
+    // Espaço entre o cabeçalho (número + título) e o conteúdo abaixo —
+    // um pouco maior que a distância entre linhas, pra separar bem os blocos.
+    let ly = y + 18
     itens.forEach((it, i) => {
       if (i > 0) {
         doc.setDrawColor(241, 245, 249)
         doc.line(x + 5, ly - 4.7, x + w - 5, ly - 4.7)
       }
       doc.setFontSize(8)
+      const corValor = it.cor || corTotal
+      const larguraValor = doc.getTextWidth(String(it.valor))
       if (valorPrimeiro) {
         doc.setFont(undefined, 'bold')
-        doc.setTextColor(...corTotal)
+        doc.setTextColor(...corValor)
         doc.text(String(it.valor), x + 5, ly)
         doc.setFont(undefined, 'normal')
         doc.setTextColor(71, 85, 105)
-        doc.text(it.label, x + 12, ly)
+        doc.text(truncarTexto(doc, it.label, w - 12 - 5), x + 12, ly)
       } else {
         doc.setFont(undefined, 'normal')
         doc.setTextColor(71, 85, 105)
-        doc.text(it.label, x + 5, ly)
+        doc.text(truncarTexto(doc, it.label, w - 10 - larguraValor - 3), x + 5, ly)
         doc.setFont(undefined, 'bold')
-        doc.setTextColor(...corTotal)
+        doc.setTextColor(...corValor)
         doc.text(String(it.valor), x + w - 5, ly, { align: 'right' })
       }
       ly += 6.5
+
+      if (it.chips && it.chips.length) {
+        const { posicionados, alturaTotal } = layoutChips(doc, w - 10, it.chips)
+        const baseY = ly - 3.2
+        posicionados.forEach(chip => {
+          doc.setFillColor(...chip.cor.fill)
+          doc.roundedRect(x + 5 + chip.x, baseY + chip.y - 3.1, chip.largura, 4.3, 0.8, 0.8, 'F')
+          doc.setFont(undefined, 'normal')
+          doc.setFontSize(6.5)
+          doc.setTextColor(...chip.cor.text)
+          doc.text(chip.texto, x + 5 + chip.x + 1.3, baseY + chip.y)
+        })
+        ly += alturaTotal + 1
+      }
     })
+
+    if (opts.chips && opts.chips.length) {
+      const { posicionados } = layoutChips(doc, w - 10, opts.chips)
+      const baseY = ly - 3.2
+      posicionados.forEach(chip => {
+        doc.setFillColor(...chip.cor.fill)
+        doc.roundedRect(x + 5 + chip.x, baseY + chip.y - 3.1, chip.largura, 4.3, 0.8, 0.8, 'F')
+        doc.setFont(undefined, 'normal')
+        doc.setFontSize(6.5)
+        doc.setTextColor(...chip.cor.text)
+        doc.text(chip.texto, x + 5 + chip.x + 1.3, baseY + chip.y)
+      })
+    }
+
+    if (opts.chipsCompostos && opts.chipsCompostos.length) {
+      const { posicionados } = layoutChipsCompostos(doc, w - 10, opts.chipsCompostos)
+      desenharChipsCompostos(doc, x + 5, ly - 6.3, posicionados)
+    }
   }
 
   // Monta o PDF de verdade (jsPDF) — usado tanto pro preview (renderizado
@@ -655,7 +873,12 @@ export default function Relatorios() {
     doc.setFontSize(18)
     doc.setTextColor(20)
     doc.text(titulo || 'Relatório', margem, y)
-    y += 8
+
+    doc.setFontSize(9)
+    doc.setTextColor(140)
+    doc.text(`Emitido em ${new Date().toLocaleString('pt-BR')}`, margem + larguraUtil, y, { align: 'right' })
+    doc.setTextColor(20)
+    y += 9
 
     if (subtitulo.trim()) {
       doc.setFontSize(11)
@@ -663,25 +886,14 @@ export default function Relatorios() {
       doc.text(subtitulo, margem, y)
       y += 7
     }
-
-    doc.setFontSize(9)
-    doc.setTextColor(140)
-    doc.text(`Emitido em ${new Date().toLocaleString('pt-BR')}`, margem, y)
-    y += 10
-    doc.setTextColor(20)
+    y += 5
 
     const gapCard = 4
-    if (graficoCampoAtivo || graficoConformidadeAtivo || cardsSelecionados.length || alertaSelecionados.length) {
-      doc.setFontSize(13)
-      doc.setTextColor(20)
-      doc.text('Resumo', margem, y)
-      y += 6
-
+    if (graficoCampoAtivo || graficoConformidadeAtivo || estoqueAtivo || alertaSelecionados.length || emManutencaoAtivo || reservaCampoAtivo) {
       // "Conformidade" e "Extintores em campo" — gráficos de rosca lado a
       // lado na mesma linha, no lugar dos cards simples.
       if (graficoCampoAtivo || graficoConformidadeAtivo) {
         const chartH = 42
-        if (y + chartH > alturaPagina - 20) { doc.addPage(); y = 18 }
 
         const periodoTexto = 'Dentro do período atual'
 
@@ -698,63 +910,75 @@ export default function Relatorios() {
       }
 
       // "Não conformidade" (abaixo do gráfico Conformidade, só os tipos com
-      // 1 ou mais ocorrência) e "Alertas" — cards de lista lado a lado.
+      // 1 ou mais ocorrência), "Alertas" e "Em manutenção" — cards de lista
+      // lado a lado, dividindo a largura entre quantos estiverem ativos.
+      // "Em manutenção" não tem sub-itens — só número e título na mesma
+      // linha, como o cabeçalho dos outros cards de lista (e uma mensagem
+      // centralizada quando não há nenhum registro).
       const naoConformidadeAtiva = graficoConformidadeAtivo && DADOS_NAO_CONFORMIDADE.length > 0
-      if (naoConformidadeAtiva || alertaSelecionados.length) {
-        const maxItens = Math.max(
-          naoConformidadeAtiva ? DADOS_NAO_CONFORMIDADE.length : 0,
-          alertaSelecionados.length
-        )
-        const listaH = alturaCardLista(maxItens)
-        if (y + listaH > alturaPagina - 20) { doc.addPage(); y = 18 }
+      const cartoesLista = []
+      if (naoConformidadeAtiva) cartoesLista.push({ titulo: 'Não conformidades', itens: DADOS_NAO_CONFORMIDADE, cor: [220, 38, 38], valorPrimeiro: false })
+      if (alertaSelecionados.length) cartoesLista.push({ titulo: 'Alertas', itens: alertaSelecionados, cor: [217, 119, 6], valorPrimeiro: false })
+      if (emManutencaoAtivo) {
+        cartoesLista.push({
+          titulo: 'Em manutenção', itens: [], cor: CHUMBO_PDF, valorPrimeiro: false, total: ordensPendentes.length,
+          opts: ordensPendentes.length === 0 ? { mensagemVazia: 'Não há nenhum registro de envio' } : {}
+        })
+      }
 
-        const halfW = (larguraUtil - gapCard) / 2
-        if (naoConformidadeAtiva && alertaSelecionados.length) {
-          desenharCardLista(doc, margem, y, halfW, listaH, 'Não conformidades', DADOS_NAO_CONFORMIDADE, [220, 38, 38], true)
-          desenharCardLista(doc, margem + halfW + gapCard, y, halfW, listaH, 'Alertas', alertaSelecionados, [217, 119, 6], false)
-        } else if (naoConformidadeAtiva) {
-          desenharCardLista(doc, margem, y, larguraUtil, listaH, 'Não conformidades', DADOS_NAO_CONFORMIDADE, [220, 38, 38], true)
-        } else {
-          desenharCardLista(doc, margem, y, larguraUtil, listaH, 'Alertas', alertaSelecionados, [217, 119, 6], false)
-        }
+      // Largura de cada card dessa linha — guardada fora do bloco pra o
+      // card de Estoque (2/3), logo abaixo, poder alinhar sua borda direita
+      // exatamente com o fim do 2º card desta linha.
+      let colWCartoesLista = null
+      if (cartoesLista.length) {
+        colWCartoesLista = (larguraUtil - gapCard * (cartoesLista.length - 1)) / cartoesLista.length
+        const listaH = Math.max(...cartoesLista.map(c => alturaCardLista(doc, c.itens, colWCartoesLista, c.opts)))
+
+        cartoesLista.forEach((c, i) => {
+          desenharCardLista(doc, margem + i * (colWCartoesLista + gapCard), y, colWCartoesLista, listaH, c.titulo, c.itens, c.cor, c.valorPrimeiro, c.total, c.opts)
+        })
         y += listaH + gapCard
       }
 
-      // Demais indicadores — cards desenhados à mão (retângulo arredondado +
-      // número grande colorido + rótulo), reproduzindo o visual dos cards do
-      // Dashboard.
-      if (cardsSelecionados.length) {
-        const colunasGrade = orientacao === 'paisagem' ? 4 : 3
-        const cardW = (larguraUtil - gapCard * (colunasGrade - 1)) / colunasGrade
-        const cardH = 20
-        const linhasGrade = Math.ceil(cardsSelecionados.length / colunasGrade)
-        const alturaGrade = linhasGrade * cardH + (linhasGrade - 1) * gapCard
+      // "Estoque/Depósito" e "RESERVA em campo" — dividem a última linha do
+      // resumo. A largura do Estoque acompanha o fim do 2º card da linha de
+      // cima (quando ela existe com 2+ cards); "RESERVA em campo" ocupa o
+      // restante, também com número/título numa linha só e a lista de
+      // locais (com tipo/kg) como chips abaixo.
+      if (estoqueAtivo || reservaCampoAtivo) {
+        const temAmbos = estoqueAtivo && reservaCampoAtivo
+        const colWEstoque = temAmbos
+          ? (colWCartoesLista != null && cartoesLista.length >= 2
+              ? colWCartoesLista * 2 + gapCard
+              : (larguraUtil - gapCard) * (2 / 3))
+          : larguraUtil
+        const colWReserva = larguraUtil - gapCard - colWEstoque
 
-        if (y + alturaGrade > alturaPagina - 20) { doc.addPage(); y = 18 }
-
-        cardsSelecionados.forEach((c, i) => {
-          const col = i % colunasGrade
-          const linha = Math.floor(i / colunasGrade)
-          const x = margem + col * (cardW + gapCard)
-          const cy = y + linha * (cardH + gapCard)
-
-          doc.setDrawColor(226, 232, 240)
-          doc.setFillColor(255, 255, 255)
-          doc.roundedRect(x, cy, cardW, cardH, 3, 3, 'FD')
-
-          doc.setFont(undefined, 'bold')
-          doc.setFontSize(15)
-          doc.setTextColor(...c.cor)
-          doc.text(String(c.valor), x + 4, cy + 9)
-
-          doc.setFont(undefined, 'normal')
-          doc.setFontSize(7)
-          doc.setTextColor(100, 116, 139)
-          const linhasLabel = doc.splitTextToSize(c.label, cardW - 8)
-          doc.text(linhasLabel.slice(0, 2), x + 4, cy + 14)
+        const chipsReserva = linhasReserva.map(l => {
+          const numero = String(l.local.numero).padStart(2, '0') + (l.local.tem_slot_a && l.local.tem_slot_b ? l.slot : '')
+          const tipoKg = l.estado.extintor_tipo ? `${l.estado.extintor_tipo} ${l.estado.extintor_kg || ''}${unidadeDoTipo(l.estado.extintor_tipo, tiposExtintor)}` : '—'
+          return {
+            local: numero,
+            tipoKg,
+            corTipo: COR_TIPO_PDF.find(t => t.teste.test(l.estado.extintor_tipo)) || { text: [71, 85, 105], fill: [241, 245, 249] }
+          }
         })
+        const reservaOpts = { chipsCompostos: chipsReserva, mensagemVazia: chipsReserva.length === 0 ? 'Nenhum extintor em RESERVA no momento' : null }
 
-        y += alturaGrade
+        const alturas = []
+        if (estoqueAtivo) alturas.push(alturaCardLista(doc, DADOS_ESTOQUE, colWEstoque))
+        if (reservaCampoAtivo) alturas.push(alturaCardLista(doc, [], temAmbos ? colWReserva : larguraUtil, reservaOpts))
+        const alturaLinha = Math.max(...alturas)
+
+        if (estoqueAtivo) {
+          desenharCardLista(doc, margem, y, colWEstoque, alturaLinha, 'Estoque / Depósito', DADOS_ESTOQUE, CHUMBO_PDF, false)
+        }
+        if (reservaCampoAtivo) {
+          const xReserva = estoqueAtivo ? margem + colWEstoque + gapCard : margem
+          const wReserva = estoqueAtivo ? colWReserva : larguraUtil
+          desenharCardLista(doc, xReserva, y, wReserva, alturaLinha, 'RESERVA em campo', [], [37, 99, 235], false, linhasReserva.length, reservaOpts)
+        }
+        y += alturaLinha + gapCard
       }
 
       doc.setFont(undefined, 'normal')
@@ -978,6 +1202,17 @@ export default function Relatorios() {
                 conforme={linhasConforme.length}
                 naoConforme={linhasNaoConforme.length}
                 semInspecao={linhasSemInspecaoConformidade.length}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs text-sci-muted font-semibold uppercase tracking-wider">Estoque / Depósito</p>
+              <CardEstoqueIndicador
+                ativo={cardsAtivos.has('estoque')}
+                onClick={() => alternarNoSet(setCardsAtivos, 'estoque')}
+                sciOk={estoqueSciOk}
+                sciNok={estoqueSciNok}
+                reserva={estoqueReservaTotal}
               />
             </div>
 
