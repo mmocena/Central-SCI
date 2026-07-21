@@ -146,12 +146,15 @@ create table historico_operacoes (
   client_op_id uuid unique
 );
 
--- Depósito / estoque de reserva (SCI e RESERVA da empresa), por tipo+kg+categoria+operacionalidade
+-- Depósito / estoque de reserva (SCI, RESERVA da empresa e Outros itens não
+-- extintores, ex: placa de sinalização), por tipo+kg+categoria+operacionalidade.
+-- Itens 'OUTRO' gravam kg=0 (placeholder) e operacional=true sempre — não têm
+-- distinção de capacidade nem de operacionalidade.
 create table estoque_deposito (
   id uuid primary key default gen_random_uuid(),
   tipo text not null,
   kg numeric(5,1) not null,
-  categoria text not null check (categoria in ('SCI', 'RESERVA')),
+  categoria text not null check (categoria in ('SCI', 'RESERVA', 'OUTRO')),
   operacional boolean not null default true,
   unique (tipo, kg, categoria, operacional),
   quantidade int not null default 0,

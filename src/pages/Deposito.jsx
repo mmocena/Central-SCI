@@ -4,6 +4,11 @@ import { fetchEstoqueDeposito, fetchTiposExtintor, ajustarEstoqueDeposito, upser
 import { unidadeDoTipo } from '../lib/formato'
 import { useToast } from '../components/Toast'
 
+// Formulário "Adicionar item" é revelado em etapas: grupo -> categoria (só em
+// Extintores) -> operacional (só em SCI) -> tipo/kg. Cada campo começa vazio
+// pra nada aparecer antes do usuário escolher a etapa anterior.
+const FORM_VAZIO = { grupo: '', categoria: '', operacional: null, tipo: '', kg: '', nome: '' }
+
 export default function Deposito() {
   const showToast = useToast()
   const navigate = useNavigate()
@@ -18,8 +23,10 @@ export default function Deposito() {
   const [draft, setDraft] = useState(null)
   const [salvandoTudo, setSalvandoTudo] = useState(false)
 
+  const [abaAtiva, setAbaAtiva] = useState('extintores')
+
   const [formAberto, setFormAberto] = useState(false)
-  const [form, setForm] = useState({ tipo: '', kg: '', categoria: 'SCI', operacional: true })
+  const [form, setForm] = useState(FORM_VAZIO)
   const [modalTipoAberto, setModalTipoAberto] = useState(false)
   const [novoTipo, setNovoTipo] = useState({ tipo: '', kg: '', unidade: 'kg' })
   const [salvandoTipo, setSalvandoTipo] = useState(false)
@@ -86,20 +93,36 @@ export default function Deposito() {
   }
 
   function handleAdicionarLocal() {
-    if (!form.tipo || !form.kg) return
     const categoria = form.categoria
-    const operacional = categoria === 'RESERVA' ? true : form.operacional
-    const kgNum = parseFloat(form.kg)
-    const existe = draft.find(d => d.tipo === form.tipo && d.kg === kgNum && d.categoria === categoria && d.operacional === operacional)
-    if (existe) {
-      showToast('Este item já está na lista.', 'aviso')
+
+    if (categoria === 'OUTRO') {
+      const nome = form.nome.trim()
+      if (!nome) return
+      const existe = draft.find(d => d.categoria === 'OUTRO' && d.tipo.toLowerCase() === nome.toLowerCase())
+      if (existe) {
+        showToast('Este item já está na lista.', 'aviso')
+      } else {
+        setDraft(d => [...d, {
+          id: `novo-${Date.now()}-${Math.random()}`,
+          tipo: nome, kg: 0, categoria: 'OUTRO', operacional: true, quantidade: 0, _novo: true
+        }])
+      }
     } else {
-      setDraft(d => [...d, {
-        id: `novo-${Date.now()}-${Math.random()}`,
-        tipo: form.tipo, kg: kgNum, categoria, operacional, quantidade: 0, _novo: true
-      }])
+      if (!form.tipo || !form.kg) return
+      const operacional = categoria === 'RESERVA' ? true : form.operacional
+      const kgNum = parseFloat(form.kg)
+      const existe = draft.find(d => d.tipo === form.tipo && d.kg === kgNum && d.categoria === categoria && d.operacional === operacional)
+      if (existe) {
+        showToast('Este item já está na lista.', 'aviso')
+      } else {
+        setDraft(d => [...d, {
+          id: `novo-${Date.now()}-${Math.random()}`,
+          tipo: form.tipo, kg: kgNum, categoria, operacional, quantidade: 0, _novo: true
+        }])
+      }
     }
-    setForm({ tipo: '', kg: '', categoria: 'SCI', operacional: true })
+
+    setForm(FORM_VAZIO)
     setFormAberto(false)
   }
 
@@ -127,12 +150,26 @@ export default function Deposito() {
     }
   }
 
-  function handleAjustarLocal(id, delta) {
-    setDraft(d => d.map(item => item.id === id ? { ...item, quantidade: Math.max(0, item.quantidade + delta) } : item))
+  // Ajusta (ou cria, se a linha ainda não existir no rascunho — caso de uma
+  // linha visível no Gerenciar com 0 unidades dos dois lados) a quantidade
+  // de um item específico por tipo+kg+categoria+operacional.
+  function handleAjustarTabela(tipo, kg, categoria, operacional, delta) {
+    setDraft(d => {
+      const existente = d.find(i => i.tipo === tipo && i.kg === kg && i.categoria === categoria && i.operacional === operacional)
+      if (existente) {
+        return d.map(i => i.id === existente.id ? { ...i, quantidade: Math.max(0, i.quantidade + delta) } : i)
+      }
+      return [...d, {
+        id: `novo-${Date.now()}-${Math.random()}`,
+        tipo, kg, categoria, operacional, quantidade: Math.max(0, delta), _novo: true
+      }]
+    })
   }
 
-  function handleExcluirLocal(id) {
-    setDraft(d => d.filter(item => item.id !== id))
+  // Remove a linha inteira (os dois lados oper./não oper., quando existirem)
+  // de um tipo+kg dentro de uma categoria.
+  function handleExcluirTabela(tipo, kg, categoria) {
+    setDraft(d => d.filter(i => !(i.tipo === tipo && i.kg === kg && i.categoria === categoria)))
   }
 
   async function handleSalvar() {
@@ -187,6 +224,7 @@ export default function Deposito() {
   const sciOk   = itensExibidos.filter(e => e.categoria === 'SCI' && e.operacional === true)
   const sciNok  = itensExibidos.filter(e => e.categoria === 'SCI' && e.operacional === false)
   const reserva = itensExibidos.filter(e => e.categoria === 'RESERVA')
+  const outros  = itensExibidos.filter(e => e.categoria === 'OUTRO')
 
   return (
     <div className="p-4 space-y-4">
@@ -209,9 +247,22 @@ export default function Deposito() {
             disabled={!sujo || salvandoTudo}
             className="btn-primary flex-1 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {salvandoTudo ? 'Salvando...' : 'Salvar alterações'}
+            {salvandoTudo ? 'Salvando...' : 'Salvar'}
           </button>
         )}
+      </div>
+
+      {/* Abas: Extintores / Outros */}
+      <div className="flex gap-2">
+        {[{ valor: 'extintores', label: 'Extintores' }, { valor: 'outros', label: 'Outros' }].map(a => (
+          <button
+            key={a.valor}
+            onClick={() => setAbaAtiva(a.valor)}
+            className={`btn-option flex-1 text-sm font-semibold ${abaAtiva === a.valor ? 'selected' : ''}`}
+          >
+            {a.label}
+          </button>
+        ))}
       </div>
 
       {/* Adicionar item — só dentro de Gerenciar */}
@@ -227,26 +278,41 @@ export default function Deposito() {
 
           {formAberto && (
             <div className="border-t border-slate-100 p-4 space-y-3">
-              {/* Categoria */}
+              {/* Etapa 1: Extintores ou Outros */}
               <div className="flex gap-2">
-                {[{ valor: 'SCI', label: 'SCI' }, { valor: 'RESERVA', label: 'RESERVA' }].map(c => (
+                {[{ valor: 'EXTINTORES', label: 'Extintores' }, { valor: 'OUTRO', label: 'Outros' }].map(g => (
                   <button
-                    key={c.valor}
-                    onClick={() => setForm(f => ({ ...f, categoria: c.valor }))}
-                    className={`btn-option flex-1 text-sm font-semibold ${form.categoria === c.valor ? 'selected' : ''}`}
+                    key={g.valor}
+                    onClick={() => setForm(f => ({ ...FORM_VAZIO, grupo: g.valor, categoria: g.valor === 'OUTRO' ? 'OUTRO' : '' }))}
+                    className={`btn-option flex-1 text-sm font-semibold ${form.grupo === g.valor ? 'selected' : ''}`}
                   >
-                    {c.label}
+                    {g.label}
                   </button>
                 ))}
               </div>
 
-              {/* Operacional — só para SCI */}
+              {/* Etapa 2: SCI ou RESERVA — só depois de escolher Extintores */}
+              {form.grupo === 'EXTINTORES' && (
+                <div className="flex gap-2">
+                  {[{ valor: 'SCI', label: 'SCI' }, { valor: 'RESERVA', label: 'RESERVA' }].map(c => (
+                    <button
+                      key={c.valor}
+                      onClick={() => setForm(f => ({ ...f, categoria: c.valor, operacional: null, tipo: '', kg: '' }))}
+                      className={`btn-option flex-1 text-sm font-semibold ${form.categoria === c.valor ? 'selected' : ''}`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Etapa 3: Operacional/Não oper. — só depois de escolher SCI */}
               {form.categoria === 'SCI' && (
                 <div className="flex gap-2">
                   {[{ valor: true, label: 'Operacional' }, { valor: false, label: 'Não operacional' }].map(op => (
                     <button
                       key={String(op.valor)}
-                      onClick={() => setForm(f => ({ ...f, operacional: op.valor }))}
+                      onClick={() => setForm(f => ({ ...f, operacional: op.valor, tipo: '', kg: '' }))}
                       className={`btn-option flex-1 text-sm ${form.operacional === op.valor ? 'selected' : ''}`}
                     >
                       {op.label}
@@ -255,39 +321,56 @@ export default function Deposito() {
                 </div>
               )}
 
-              {/* Tipo / kg */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex gap-1.5">
+              {form.categoria === 'OUTRO' && (
+                /* Nome livre — sem tipo/kg da tabela de extintores */
+                <div>
+                  <label className="text-xs text-slate-400">Nome do item</label>
+                  <input
+                    type="text"
+                    value={form.nome}
+                    onChange={e => setForm(f => ({ ...f, nome: e.target.value }))}
+                    placeholder="ex: Placa de sinalização"
+                    autoFocus
+                    className="w-full mt-1"
+                  />
+                </div>
+              )}
+
+              {/* Etapa 4: Tipo/kg — só depois de RESERVA, ou de SCI+operacional escolhidos */}
+              {(form.categoria === 'RESERVA' || (form.categoria === 'SCI' && form.operacional !== null)) && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex gap-1.5">
+                    <select
+                      value={form.tipo}
+                      onChange={e => setForm(f => ({ ...f, tipo: e.target.value, kg: '' }))}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                    >
+                      <option value="">Tipo</option>
+                      {[...new Set(tipos.map(t => t.tipo))].sort().map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setModalTipoAberto(true)}
+                      className="shrink-0 w-9 h-9 rounded-lg border border-slate-200 text-slate-500 text-lg flex items-center justify-center hover:bg-slate-50"
+                      aria-label="Adicionar novo tipo"
+                    >+</button>
+                  </div>
                   <select
-                    value={form.tipo}
-                    onChange={e => setForm(f => ({ ...f, tipo: e.target.value, kg: '' }))}
+                    value={form.kg}
+                    onChange={e => setForm(f => ({ ...f, kg: e.target.value }))}
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                   >
-                    <option value="">Tipo</option>
-                    {[...new Set(tipos.map(t => t.tipo))].sort().map(t => <option key={t} value={t}>{t}</option>)}
+                    <option value="">Capacidade</option>
+                    {[...new Set(tipos.filter(t => !form.tipo || t.tipo === form.tipo).map(t => t.kg))].sort((a, b) => a - b).map(kg => (
+                      <option key={kg} value={kg}>{kg}{unidadeDoTipo(form.tipo, tipos)}</option>
+                    ))}
                   </select>
-                  <button
-                    type="button"
-                    onClick={() => setModalTipoAberto(true)}
-                    className="shrink-0 w-9 h-9 rounded-lg border border-slate-200 text-slate-500 text-lg flex items-center justify-center hover:bg-slate-50"
-                    aria-label="Adicionar novo tipo"
-                  >+</button>
                 </div>
-                <select
-                  value={form.kg}
-                  onChange={e => setForm(f => ({ ...f, kg: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                >
-                  <option value="">Capacidade</option>
-                  {[...new Set(tipos.filter(t => !form.tipo || t.tipo === form.tipo).map(t => t.kg))].sort((a, b) => a - b).map(kg => (
-                    <option key={kg} value={kg}>{kg}{unidadeDoTipo(form.tipo, tipos)}</option>
-                  ))}
-                </select>
-              </div>
+              )}
 
               <button
                 onClick={handleAdicionarLocal}
-                disabled={!form.tipo || !form.kg}
+                disabled={form.categoria === 'OUTRO' ? !form.nome.trim() : (!form.tipo || !form.kg)}
                 className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Adicionar
@@ -297,44 +380,48 @@ export default function Deposito() {
         </div>
       )}
 
-      {/* SCI — Operacional */}
-      <Secao
-        titulo="SCI — Operacional"
-        corTitulo="text-green-700"
-        indicador={<span className="w-2 h-2 rounded-full bg-green-500 inline-block" />}
-        itens={sciOk}
-        onAjustar={handleAjustarLocal}
-        onExcluir={handleExcluirLocal}
-        tiposExtintor={tipos}
-        gerenciando={gerenciando}
-        vazio="Nenhum extintor SCI operacional no depósito."
-      />
+      {abaAtiva === 'extintores' ? (
+        <>
+          {/* SCI — tabela Oper. / Não oper. / Total */}
+          <TabelaEstoque
+            titulo="SCI"
+            indicador={<span className="w-2 h-2 rounded-full bg-green-500 inline-block" />}
+            linhas={agruparOperNaoOper(sciOk, sciNok)}
+            tiposExtintor={tipos}
+            vazio="Nenhum extintor SCI no depósito."
+            gerenciando={gerenciando}
+            categoria="SCI"
+            onAjustar={handleAjustarTabela}
+            onExcluir={handleExcluirTabela}
+          />
 
-      {/* SCI — Não operacional */}
-      <Secao
-        titulo="SCI — Não operacional"
-        corTitulo="text-amber-700"
-        indicador={<span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />}
-        itens={sciNok}
-        onAjustar={handleAjustarLocal}
-        onExcluir={handleExcluirLocal}
-        tiposExtintor={tipos}
-        gerenciando={gerenciando}
-        vazio="Nenhum extintor SCI não operacional no depósito."
-      />
-
-      {/* RESERVA */}
-      <Secao
-        titulo={<><span className="text-blue-600">RESERVA</span> — empresa</>}
-        corTitulo="text-blue-700"
-        indicador={<span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />}
-        itens={reserva}
-        onAjustar={handleAjustarLocal}
-        onExcluir={handleExcluirLocal}
-        tiposExtintor={tipos}
-        gerenciando={gerenciando}
-        vazio="Nenhum extintor RESERVA no depósito."
-      />
+          {/* RESERVA — tabela simples (sempre operacional) */}
+          <TabelaSimples
+            titulo={<><span className="text-blue-600">RESERVA</span> — empresa</>}
+            indicador={<span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />}
+            linhas={agruparSimples(reserva)}
+            tiposExtintor={tipos}
+            vazio="Nenhum extintor RESERVA no depósito."
+            gerenciando={gerenciando}
+            categoria="RESERVA"
+            onAjustar={handleAjustarTabela}
+            onExcluir={handleExcluirTabela}
+          />
+        </>
+      ) : (
+        <TabelaSimples
+          titulo="Outros itens"
+          indicador={<span className="w-2 h-2 rounded-full bg-slate-400 inline-block" />}
+          linhas={agruparSimples(outros)}
+          tiposExtintor={tipos}
+          vazio="Nenhum item cadastrado."
+          gerenciando={gerenciando}
+          categoria="OUTRO"
+          onAjustar={handleAjustarTabela}
+          onExcluir={handleExcluirTabela}
+          comKg={false}
+        />
+      )}
 
       {/* Modal — novo tipo de extintor */}
       {modalTipoAberto && (
@@ -396,63 +483,155 @@ export default function Deposito() {
   )
 }
 
-function Secao({ titulo, indicador, itens, onAjustar, onExcluir, vazio, tiposExtintor, gerenciando }) {
-  const grupos = {}
+// Junta itens operacionais e não operacionais por TIPO+capacidade, somando
+// as quantidades de cada lado — base das linhas da TabelaEstoque (SCI).
+function agruparOperNaoOper(itensOper, itensNaoOper) {
+  const porChave = new Map()
+  function acumular(itens, campo) {
+    itens.forEach(item => {
+      const chave = `${item.tipo}|${item.kg}`
+      if (!porChave.has(chave)) porChave.set(chave, { tipo: item.tipo, kg: item.kg, oper: 0, naoOper: 0 })
+      porChave.get(chave)[campo] += item.quantidade
+    })
+  }
+  acumular(itensOper, 'oper')
+  acumular(itensNaoOper, 'naoOper')
+  return [...porChave.values()].sort((a, b) => a.tipo.localeCompare(b.tipo) || a.kg - b.kg)
+}
+
+// Agrupa por TIPO+capacidade somando a quantidade — base das linhas da
+// TabelaSimples (RESERVA e Outros, que não têm distinção oper./não oper.).
+function agruparSimples(itens) {
+  const porChave = new Map()
   itens.forEach(item => {
-    if (!grupos[item.tipo]) grupos[item.tipo] = []
-    grupos[item.tipo].push(item)
+    const chave = `${item.tipo}|${item.kg}`
+    if (!porChave.has(chave)) porChave.set(chave, { tipo: item.tipo, kg: item.kg, qtd: 0 })
+    porChave.get(chave).qtd += item.quantidade
   })
-  const tiposOrdenados = Object.keys(grupos).sort()
+  return [...porChave.values()].sort((a, b) => a.tipo.localeCompare(b.tipo) || a.kg - b.kg)
+}
+
+// Par de setas − valor + usado nas colunas editáveis das tabelas, só no
+// modo Gerenciar.
+function Stepper({ valor, cor, onDelta }) {
+  return (
+    <div className="flex items-center justify-center gap-0.5">
+      <button
+        onClick={() => onDelta(-1)}
+        disabled={valor === 0}
+        className="w-5 h-5 rounded border border-slate-200 text-slate-500 text-xs leading-none flex items-center justify-center hover:bg-slate-50 disabled:opacity-30"
+      >−</button>
+      <span className={`w-5 text-center text-sm font-semibold ${valor === 0 ? 'text-slate-300' : cor}`}>{valor}</span>
+      <button
+        onClick={() => onDelta(1)}
+        className="w-5 h-5 rounded border border-slate-200 text-slate-500 text-xs leading-none flex items-center justify-center hover:bg-slate-50"
+      >+</button>
+    </div>
+  )
+}
+
+function TabelaEstoque({ titulo, indicador, linhas, tiposExtintor, vazio, gerenciando, categoria, onAjustar, onExcluir }) {
+  const total = linhas.reduce((acc, l) => ({ oper: acc.oper + l.oper, naoOper: acc.naoOper + l.naoOper }), { oper: 0, naoOper: 0 })
+  const linhasVisiveis = gerenciando ? linhas : linhas.filter(l => l.oper > 0 || l.naoOper > 0)
+  const colunas = gerenciando
+    ? 'grid grid-cols-[1fr,4.5rem,4.5rem,2.5rem,1.25rem] gap-1 items-center'
+    : 'grid grid-cols-[1fr,3.5rem,3.5rem,3.5rem] gap-1 items-center'
 
   return (
     <div className="space-y-2">
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1 flex items-center gap-2">
         {indicador}{titulo}
       </p>
-      {itens.length === 0 ? (
+      {linhasVisiveis.length === 0 ? (
         <div className="card text-center py-4 text-slate-400 text-sm">{vazio}</div>
-      ) : tiposOrdenados.map(tipo => (
-        <div key={tipo} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <p className="px-4 py-2 text-sm font-semibold text-sci-text bg-slate-50">{tipo}</p>
+      ) : (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className={`${colunas} px-4 py-2 bg-slate-50 text-[10px] font-semibold text-slate-400 uppercase tracking-wide`}>
+            <span>Tipo</span>
+            <span className="text-center">Oper.</span>
+            <span className="text-center">Não op.</span>
+            <span className="text-center">Total</span>
+            {gerenciando && <span />}
+          </div>
           <div className="divide-y divide-slate-100">
-            {grupos[tipo].sort((a, b) => a.kg - b.kg).map(item => (
-              <div key={item.id} className="flex items-center gap-3 px-4 py-2.5">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-slate-600">{item.kg}{unidadeDoTipo(item.tipo, tiposExtintor)}</p>
-                </div>
-
+            {linhasVisiveis.map(l => (
+              <div key={`${l.tipo}-${l.kg}`} className={`${colunas} px-4 py-2.5`}>
+                <span className="text-sm text-slate-600 truncate">{l.tipo} {l.kg}{unidadeDoTipo(l.tipo, tiposExtintor)}</span>
                 {gerenciando ? (
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => onAjustar(item.id, -1)}
-                      disabled={item.quantidade === 0}
-                      className="w-8 h-8 rounded-lg border border-slate-200 text-slate-600 text-lg flex items-center justify-center hover:bg-slate-50 disabled:opacity-30"
-                    >−</button>
-                    <span className={`text-lg font-bold w-8 text-center ${item.quantidade === 0 ? 'text-slate-300' : 'text-sci-text'}`}>
-                      {item.quantidade}
-                    </span>
-                    <button
-                      onClick={() => onAjustar(item.id, 1)}
-                      className="w-8 h-8 rounded-lg border border-slate-200 text-slate-600 text-lg flex items-center justify-center hover:bg-slate-50"
-                    >+</button>
-                  </div>
+                  <Stepper valor={l.oper} cor="text-green-700" onDelta={delta => onAjustar(l.tipo, l.kg, categoria, true, delta)} />
                 ) : (
-                  <span className={`text-lg font-bold ${item.quantidade === 0 ? 'text-slate-300' : 'text-sci-text'}`}>
-                    {item.quantidade}
-                  </span>
+                  <span className={`text-center text-sm font-semibold ${l.oper === 0 ? 'text-slate-300' : 'text-green-700'}`}>{l.oper}</span>
                 )}
-
+                {gerenciando ? (
+                  <Stepper valor={l.naoOper} cor="text-amber-700" onDelta={delta => onAjustar(l.tipo, l.kg, categoria, false, delta)} />
+                ) : (
+                  <span className={`text-center text-sm font-semibold ${l.naoOper === 0 ? 'text-slate-300' : 'text-amber-700'}`}>{l.naoOper}</span>
+                )}
+                <span className="text-center text-sm font-bold text-sci-text">{l.oper + l.naoOper}</span>
                 {gerenciando && (
-                  <button
-                    onClick={() => onExcluir(item.id)}
-                    className="text-xs text-slate-300 hover:text-red-500 transition-colors shrink-0 ml-1"
-                  >✕</button>
+                  <button onClick={() => onExcluir(l.tipo, l.kg, categoria)} className="text-slate-300 hover:text-red-500 text-xs transition-colors">✕</button>
                 )}
               </div>
             ))}
           </div>
+          <div className={`${colunas} px-4 py-2.5 bg-slate-50 border-t border-slate-200`}>
+            <span className="text-xs font-semibold text-slate-500 uppercase">Total</span>
+            <span className="text-center text-sm font-bold text-green-700">{total.oper}</span>
+            <span className="text-center text-sm font-bold text-amber-700">{total.naoOper}</span>
+            <span className="text-center text-sm font-bold text-sci-text">{total.oper + total.naoOper}</span>
+            {gerenciando && <span />}
+          </div>
         </div>
-      ))}
+      )}
+    </div>
+  )
+}
+
+// TIPO(+kg) | QTD — usada pra RESERVA (sempre operacional) e Outros (sem kg,
+// nome livre).
+function TabelaSimples({ titulo, indicador, linhas, tiposExtintor, vazio, gerenciando, categoria, onAjustar, onExcluir, comKg = true }) {
+  const total = linhas.reduce((s, l) => s + l.qtd, 0)
+  const linhasVisiveis = gerenciando ? linhas : linhas.filter(l => l.qtd > 0)
+  const colunas = gerenciando
+    ? 'grid grid-cols-[1fr,4.5rem,1.25rem] gap-1 items-center'
+    : 'grid grid-cols-[1fr,3.5rem] gap-1 items-center'
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1 flex items-center gap-2">
+        {indicador}{titulo}
+      </p>
+      {linhasVisiveis.length === 0 ? (
+        <div className="card text-center py-4 text-slate-400 text-sm">{vazio}</div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className={`${colunas} px-4 py-2 bg-slate-50 text-[10px] font-semibold text-slate-400 uppercase tracking-wide`}>
+            <span>{comKg ? 'Tipo' : 'Nome do item'}</span>
+            <span className="text-center">Qtd.</span>
+            {gerenciando && <span />}
+          </div>
+          <div className="divide-y divide-slate-100">
+            {linhasVisiveis.map(l => (
+              <div key={`${l.tipo}-${l.kg}`} className={`${colunas} px-4 py-2.5`}>
+                <span className="text-sm text-slate-600 truncate">{l.tipo}{comKg ? ` ${l.kg}${unidadeDoTipo(l.tipo, tiposExtintor)}` : ''}</span>
+                {gerenciando ? (
+                  <Stepper valor={l.qtd} cor="text-sci-text" onDelta={delta => onAjustar(l.tipo, l.kg, categoria, true, delta)} />
+                ) : (
+                  <span className={`text-center text-sm font-bold ${l.qtd === 0 ? 'text-slate-300' : 'text-sci-text'}`}>{l.qtd}</span>
+                )}
+                {gerenciando && (
+                  <button onClick={() => onExcluir(l.tipo, l.kg, categoria)} className="text-slate-300 hover:text-red-500 text-xs transition-colors">✕</button>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className={`${colunas} px-4 py-2.5 bg-slate-50 border-t border-slate-200`}>
+            <span className="text-xs font-semibold text-slate-500 uppercase">Total</span>
+            <span className="text-center text-sm font-bold text-sci-text">{total}</span>
+            {gerenciando && <span />}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
