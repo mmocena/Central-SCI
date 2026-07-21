@@ -424,7 +424,7 @@ export default function Relatorios() {
   const anoAtual = String(new Date().getFullYear())
   const linhasVencendoN2 = linhas.filter(l => {
     const dias = diasAte(l.estado.validade_nivel2)
-    return dias !== null && dias < 90
+    return dias !== null && dias >= 0 && dias < 90
   })
   const linhasVencendoN3 = linhas.filter(l => l.estado.validade_nivel3 && l.estado.validade_nivel3.startsWith(anoAtual))
 

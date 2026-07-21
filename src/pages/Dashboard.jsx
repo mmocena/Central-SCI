@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fetchLocaisComEstado, fetchInicioPeriodoInspecao, fetchTiposExtintor, fetchOrdensPendentes } from '../lib/queries'
+import {
+  fetchLocaisComEstado, fetchInicioPeriodoInspecao, fetchTiposExtintor, fetchOrdensPendentes,
+  fetchEstoqueDeposito, fetchTrocasPlanejadas, definirTrocaPlanejada, cancelarTrocaPlanejada
+} from '../lib/queries'
 import { tipoDivergente, textoTipoDivergente } from '../lib/conformidade'
+import { locaisNecessitandoTroca } from '../lib/trocas'
 import ModalDetalhesLocal from '../components/ModalDetalhesLocal'
 import ModalListaExtintores from '../components/ModalListaExtintores'
+import ModalAlertaTipoDivergente from '../components/ModalAlertaTipoDivergente'
+import ModalLocal from '../components/ModalLocal'
 import TabelaSituacao from '../components/TabelaSituacao'
+import { useToast } from '../components/Toast'
+
+const STORAGE_KEY = 'sci_responsavel'
 
 // rotulo (ex: "Ver") é só a indicação visual de que o card inteiro é
 // clicável — texto puro, sem pill/borda, na cor do próprio indicador.
@@ -124,13 +133,23 @@ function CardVistoria({ total, vistoriados, naoVistoriados, onVerTotal, onVerVis
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const showToast = useToast()
   const [locais, setLocais] = useState([])
   const [inicioPeriodo, setInicioPeriodo] = useState(null)
   const [tiposExtintor, setTiposExtintor] = useState([])
   const [ordensPendentes, setOrdensPendentes] = useState([])
+  const [estoque, setEstoque] = useState([])
+  const [trocasPlanejadas, setTrocasPlanejadas] = useState([])
   const [loading, setLoading] = useState(true)
   const [detalheAberto, setDetalheAberto] = useState(null)
   const [listaAberta, setListaAberta] = useState(null)
+  const [substituindoLocal, setSubstituindoLocal] = useState(null)
+  const [tipoDivergenteAberto, setTipoDivergenteAberto] = useState(false)
+  // chave (localId:slot) ou id de troca em andamento — desabilita e mostra
+  // feedback imediato no botão clicado, sem esperar o round-trip completo.
+  const [processando, setProcessando] = useState(null)
+
+  const responsavel = localStorage.getItem(STORAGE_KEY) || ''
 
   useEffect(() => {
     carregar()
@@ -139,26 +158,88 @@ export default function Dashboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'local_estado_atual' }, carregar)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'configuracoes' }, carregar)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ordens_manutencao' }, carregar)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trocas_planejadas' }, carregar)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'estoque_deposito' }, carregar)
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [])
 
   async function carregar() {
     try {
-      const [locaisData, periodo, tiposData, ordensData] = await Promise.all([
+      const [locaisData, periodo, tiposData, ordensData, estoqueData, trocasData] = await Promise.all([
         fetchLocaisComEstado(),
         fetchInicioPeriodoInspecao(),
         fetchTiposExtintor(),
-        fetchOrdensPendentes()
+        fetchOrdensPendentes(),
+        fetchEstoqueDeposito(),
+        fetchTrocasPlanejadas()
       ])
       setLocais(locaisData)
       setInicioPeriodo(periodo)
       setTiposExtintor(tiposData)
       setOrdensPendentes(ordensData)
+      setEstoque(estoqueData)
+      setTrocasPlanejadas(trocasData)
     } catch (e) {
       console.error(e)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Definir/desfazer só muda trocas_planejadas — recarregar tudo de novo a
+  // cada clique é desperdício e deixa a resposta visual lenta.
+  async function recarregarTrocas() {
+    try {
+      setTrocasPlanejadas(await fetchTrocasPlanejadas())
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  async function handleDefinirTroca(linha, candidato, responsavelAtual) {
+    if (!responsavelAtual) {
+      showToast('Informe seu nome na aba Inspeção antes de definir uma troca.', 'erro')
+      return
+    }
+    const chave = `${linha.local.id}:${linha.slot}`
+    setProcessando(chave)
+    try {
+      const resultado = await definirTrocaPlanejada({
+        localId: linha.local.id,
+        slot: linha.slot,
+        origemTipo: candidato.tipo,
+        origemLocalId: candidato.tipo === 'local' ? candidato.local.id : null,
+        origemSlot: candidato.tipo === 'local' ? candidato.slot : null,
+        origemEstoqueId: candidato.tipo !== 'local' ? candidato.estoque.id : null,
+        responsavel: responsavelAtual
+      })
+      showToast(
+        resultado.queued ? 'Sem conexão — será enviado automaticamente ao reconectar.' : 'Troca definida.',
+        resultado.queued ? 'aviso' : 'sucesso'
+      )
+      await recarregarTrocas()
+    } catch (e) {
+      showToast('Erro ao definir troca — talvez essa opção já tenha sido escolhida por outro local. ' + e.message, 'erro')
+      await recarregarTrocas()
+    } finally {
+      setProcessando(null)
+    }
+  }
+
+  async function handleCancelarTroca(id) {
+    setProcessando(id)
+    try {
+      const resultado = await cancelarTrocaPlanejada(id)
+      showToast(
+        resultado.queued ? 'Sem conexão — será enviado automaticamente ao reconectar.' : 'Troca desfeita.',
+        resultado.queued ? 'aviso' : 'sucesso'
+      )
+      await recarregarTrocas()
+    } catch (e) {
+      showToast('Erro ao desfazer troca: ' + e.message, 'erro')
+    } finally {
+      setProcessando(null)
     }
   }
 
@@ -188,12 +269,19 @@ export default function Dashboard() {
 
   const linhasTipoDivergente = linhas.filter(l => tipoDivergente(l.estado.extintor_tipo, l.local.planta_tipo_exigido))
 
+  // Quem tem chance real de ser resolvido por uma troca de Tipo — usado
+  // pelas sugestões de troca dentro do modal de "Tipo divergente da planta".
+  const { tipo: necessitandoTipo } = locaisNecessitandoTroca(linhas)
+  const necessitandoTipoKeys = new Set(necessitandoTipo.map(l => `${l.local.id}:${l.slot}`))
+  const estoqueSCI = estoque.filter(e => e.categoria === 'SCI' && e.operacional)
+  const estoqueRESERVA = estoque.filter(e => e.categoria === 'RESERVA' && e.operacional)
+
   // "Vencendo em breve": N2 nos próximos 90 dias (mesmo limiar usado nas
   // tabelas de Situação/Histórico) e N3 dentro do ano vigente.
   const anoAtual = String(new Date().getFullYear())
   const linhasVencendoN2 = linhas.filter(l => {
     const dias = diasAte(l.estado.validade_nivel2)
-    return dias !== null && dias < 90
+    return dias !== null && dias >= 0 && dias < 90
   })
   const linhasVencendoN3 = linhas.filter(l => l.estado.validade_nivel3 && l.estado.validade_nivel3.startsWith(anoAtual))
 
@@ -265,7 +353,9 @@ export default function Dashboard() {
         <p className="text-xs text-sci-muted font-semibold uppercase tracking-wider">Alertas</p>
         <CardAlertas
           grupos={gruposAlertas}
-          onVerGrupo={g => abrirLista(g.titulo, g.linhas, 'ambar', g.detalhe)}
+          onVerGrupo={g => g.titulo === 'Tipo divergente da planta'
+            ? setTipoDivergenteAberto(true)
+            : abrirLista(g.titulo, g.linhas, 'ambar', g.detalhe)}
         />
       </div>
 
@@ -299,6 +389,26 @@ export default function Dashboard() {
           detalhe={listaAberta.detalhe}
           onClose={() => setListaAberta(null)}
           onSelecionar={item => setDetalheAberto(item)}
+          onSubstituir={listaAberta.titulo === 'RESERVA em campo'
+            ? item => { setListaAberta(null); setSubstituindoLocal(item) }
+            : undefined}
+        />
+      )}
+
+      {tipoDivergenteAberto && (
+        <ModalAlertaTipoDivergente
+          linhas={linhasTipoDivergente}
+          necessitandoKeys={necessitandoTipoKeys}
+          todasLinhas={linhas}
+          estoqueSCI={estoqueSCI}
+          estoqueRESERVA={estoqueRESERVA}
+          trocasPlanejadas={trocasPlanejadas}
+          responsavel={responsavel}
+          processando={processando}
+          onDefinir={handleDefinirTroca}
+          onCancelar={handleCancelarTroca}
+          onClose={() => setTipoDivergenteAberto(false)}
+          onSelecionarLocal={item => setDetalheAberto(item)}
         />
       )}
 
@@ -309,6 +419,16 @@ export default function Dashboard() {
           estado={detalheAberto.estado}
           tiposExtintor={tiposExtintor}
           onClose={() => setDetalheAberto(null)}
+        />
+      )}
+
+      {substituindoLocal && (
+        <ModalLocal
+          local={substituindoLocal.local}
+          responsavel={responsavel}
+          substituicaoAtiva
+          onClose={() => setSubstituindoLocal(null)}
+          onAtualizar={carregar}
         />
       )}
     </div>
