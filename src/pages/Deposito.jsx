@@ -31,6 +31,10 @@ export default function Deposito() {
   const [novoTipo, setNovoTipo] = useState({ tipo: '', kg: '', unidade: 'kg' })
   const [salvandoTipo, setSalvandoTipo] = useState(false)
 
+  // Modal próprio (não o confirm() nativo do navegador) pra avisar de
+  // alterações não salvas — guarda o que fazer se o usuário confirmar a saída.
+  const [confirmSaida, setConfirmSaida] = useState(null)
+
   const carregar = useCallback(async () => {
     const [estoqueData, tiposData] = await Promise.all([fetchEstoqueDeposito(), fetchTiposExtintor()])
     setEstoque(estoqueData)
@@ -60,7 +64,8 @@ export default function Deposito() {
     return () => window.removeEventListener('beforeunload', handler)
   }, [sujo])
 
-  // Avisa antes de navegar pra outra tela do app com alterações não salvas.
+  // Avisa antes de navegar pra outra tela do app com alterações não salvas —
+  // modal próprio (não o dialog do navegador) com o "diz:" e a cara do site.
   useEffect(() => {
     if (!sujo) return
     function handleClickCapture(e) {
@@ -70,11 +75,7 @@ export default function Deposito() {
       if (!href || anchor.pathname === window.location.pathname) return
       e.preventDefault()
       e.stopPropagation()
-      if (confirm('Você tem alterações não salvas no Depósito. Sair sem salvar?')) {
-        setGerenciando(false)
-        setDraft(null)
-        navigate(href)
-      }
+      setConfirmSaida({ onConfirmar: () => { setGerenciando(false); setDraft(null); navigate(href) } })
     }
     document.addEventListener('click', handleClickCapture, true)
     return () => document.removeEventListener('click', handleClickCapture, true)
@@ -82,7 +83,10 @@ export default function Deposito() {
 
   function handleToggleGerenciar() {
     if (gerenciando) {
-      if (sujo && !confirm('Você tem alterações não salvas. Sair sem salvar?')) return
+      if (sujo) {
+        setConfirmSaida({ onConfirmar: () => { setGerenciando(false); setDraft(null); setFormAberto(false) } })
+        return
+      }
       setGerenciando(false)
       setDraft(null)
       setFormAberto(false)
@@ -476,6 +480,28 @@ export default function Deposito() {
             >
               {salvandoTipo ? 'Adicionando...' : 'Adicionar'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal — confirmação de saída sem salvar (próprio do app, não o
+          confirm() do navegador) */}
+      {confirmSaida && (
+        <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmSaida(null)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <p className="font-semibold text-sci-text">Sair sem salvar?</p>
+            <p className="text-sm text-slate-500">Você tem alterações não salvas no Depósito. Elas serão perdidas se sair agora.</p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmSaida(null)} className="btn-secondary flex-1">
+                Continuar editando
+              </button>
+              <button
+                onClick={() => { const onConfirmar = confirmSaida.onConfirmar; setConfirmSaida(null); onConfirmar() }}
+                className="btn-primary flex-1"
+              >
+                Sair sem salvar
+              </button>
+            </div>
           </div>
         </div>
       )}
