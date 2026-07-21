@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { fetchEstoqueDeposito, fetchTiposExtintor, ajustarEstoqueDeposito, upsertItemDeposito, excluirItemDeposito, salvarRegistroAdmin } from '../lib/queries'
 import { unidadeDoTipo } from '../lib/formato'
@@ -427,9 +428,10 @@ export default function Deposito() {
         />
       )}
 
-      {/* Modal — novo tipo de extintor */}
-      {modalTipoAberto && (
-        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/40 p-4" onClick={() => !salvandoTipo && setModalTipoAberto(false)}>
+      {/* Modal — novo tipo de extintor (portal: escapa do space-y-4 da
+          página, que senão empurraria o overlay com margin-top) */}
+      {modalTipoAberto && createPortal(
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => !salvandoTipo && setModalTipoAberto(false)}>
           <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <p className="font-semibold text-sci-text">Novo tipo de extintor</p>
@@ -481,13 +483,14 @@ export default function Deposito() {
               {salvandoTipo ? 'Adicionando...' : 'Adicionar'}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal — confirmação de saída sem salvar (próprio do app, não o
-          confirm() do navegador) */}
-      {confirmSaida && (
-        <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmSaida(null)}>
+          confirm() do navegador). Também via portal, pelo mesmo motivo. */}
+      {confirmSaida && createPortal(
+        <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setConfirmSaida(null)}>
           <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
             <p className="font-semibold text-sci-text">Sair sem salvar?</p>
             <p className="text-sm text-slate-500">Você tem alterações não salvas no Depósito. Elas serão perdidas se sair agora.</p>
@@ -503,7 +506,8 @@ export default function Deposito() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

@@ -39,7 +39,7 @@ export default function ModalDetalhesLocal({ local, slot, estado, onClose, tipos
   const plantaLabel = [local.planta_tipo_exigido, local.planta_cap_ext_exigida].filter(Boolean).join(' ')
 
   return createPortal(
-    <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
       <div
         className="w-full max-w-md max-h-[85vh] overflow-y-auto bg-white rounded-2xl shadow-xl"
         onClick={e => e.stopPropagation()}

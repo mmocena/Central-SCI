@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 import { fetchHistoricoInspecoes, fetchTiposExtintor } from '../lib/queries'
 import { calcularConformidade, tipoDivergente } from '../lib/conformidade'
@@ -279,9 +280,9 @@ export default function HistoricoInspecoes() {
         )}
       </div>
 
-      {/* Bottom sheet de filtro por período */}
-      {filtroAberto && (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/30" onClick={() => setFiltroAberto(false)}>
+      {/* Bottom sheet de filtro por período — via portal */}
+      {filtroAberto && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end bg-black/30 backdrop-blur-sm" onClick={() => setFiltroAberto(false)}>
           <div className="w-full bg-white rounded-t-3xl border-t border-sci-border shadow-xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <p className="font-semibold text-sci-text">Filtrar por período</p>
@@ -329,7 +330,8 @@ export default function HistoricoInspecoes() {
 
             <button onClick={() => setFiltroAberto(false)} className="btn-primary w-full">Aplicar</button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

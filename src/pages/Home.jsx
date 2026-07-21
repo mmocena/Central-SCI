@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 import { fetchLocaisComEstado, fetchInicioPeriodoInspecao, resetarPeriodoInspecao, fetchTiposExtintor } from '../lib/queries'
 import LocalCard from '../components/LocalCard'
@@ -260,9 +261,10 @@ export default function Home() {
         ))}
       </div>
 
-      {/* Modal de filtros */}
-      {filtrosAberto && (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/30" onClick={() => setFiltrosAberto(false)}>
+      {/* Modal de filtros — via portal, pra não herdar margin-top de sibling
+          num container space-y e deixar de cobrir o topo da tela */}
+      {filtrosAberto && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end bg-black/30 backdrop-blur-sm" onClick={() => setFiltrosAberto(false)}>
           <div
             className="w-full bg-white rounded-t-3xl border-t border-sci-border shadow-xl p-5 space-y-4"
             onClick={e => e.stopPropagation()}
@@ -334,7 +336,8 @@ export default function Home() {
               Aplicar
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {localSelecionado && (
@@ -346,9 +349,9 @@ export default function Home() {
         />
       )}
 
-      {/* Modal de confirmação — reset do período de vistoria */}
-      {resetAberto && (
-        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/40 p-4" onClick={() => !resetando && setResetAberto(false)}>
+      {/* Modal de confirmação — reset do período de vistoria (via portal) */}
+      {resetAberto && createPortal(
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => !resetando && setResetAberto(false)}>
           <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
             <p className="font-semibold text-sci-text">Reiniciar período de vistoria?</p>
             <p className="text-sm text-slate-600 leading-relaxed">
@@ -368,7 +371,8 @@ export default function Home() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

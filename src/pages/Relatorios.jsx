@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import {
@@ -1285,9 +1286,9 @@ export default function Relatorios() {
         </button>
       </div>
 
-      {/* Telas estreitas: preview + emitir dentro de um modal */}
-      {previewAberto && (
-        <div className="fixed inset-0 z-[260] bg-black/40 flex items-end lg:hidden" onClick={() => !gerando && setPreviewAberto(false)}>
+      {/* Telas estreitas: preview + emitir dentro de um modal — via portal */}
+      {previewAberto && createPortal(
+        <div className="fixed inset-0 z-[260] bg-black/40 backdrop-blur-sm flex items-end lg:hidden" onClick={() => !gerando && setPreviewAberto(false)}>
           <div className="w-full h-[88vh] bg-white rounded-t-2xl flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-4 border-b border-slate-100 shrink-0">
               <p className="font-semibold text-sci-text">Preview do relatório</p>
@@ -1310,7 +1311,8 @@ export default function Relatorios() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

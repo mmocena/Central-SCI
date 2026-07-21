@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { textoTipoDivergente } from '../lib/conformidade'
 import { trocaQueResolveComoOrigem } from '../lib/trocas'
 import { SugestoesTroca } from './SugestoesTroca'
@@ -6,8 +7,8 @@ import { SugestoesTroca } from './SugestoesTroca'
 // Conformidades — agora vive só aqui, aberto a partir do alerta na página
 // inicial, pra não confundir com as não conformidades de verdade.
 export default function ModalAlertaTipoDivergente({ linhas, necessitandoKeys, onClose, onSelecionarLocal, ...trocaProps }) {
-  return (
-    <div className="fixed inset-0 z-[250] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 z-[250] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-0 sm:p-4" onClick={onClose}>
       <div
         className="w-full sm:max-w-lg max-h-[85vh] bg-white rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col"
         onClick={e => e.stopPropagation()}
@@ -55,6 +56,7 @@ export default function ModalAlertaTipoDivergente({ linhas, necessitandoKeys, on
           })}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

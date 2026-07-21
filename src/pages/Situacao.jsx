@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 import { fetchLocaisComEstado, fetchTiposExtintor } from '../lib/queries'
 import { tipoDivergente } from '../lib/conformidade'
@@ -83,9 +84,9 @@ export default function Situacao() {
 
       <TabelaSituacao linhas={linhasFiltradas} tiposExtintor={tiposExtintor} />
 
-      {/* Bottom sheet de filtros */}
-      {filtroAberto && (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/30" onClick={() => setFiltroAberto(false)}>
+      {/* Bottom sheet de filtros — via portal */}
+      {filtroAberto && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end bg-black/30 backdrop-blur-sm" onClick={() => setFiltroAberto(false)}>
           <div className="w-full bg-white rounded-t-3xl border-t border-sci-border shadow-xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <p className="font-semibold text-sci-text">Filtros</p>
@@ -120,7 +121,8 @@ export default function Situacao() {
 
             <button onClick={() => setFiltroAberto(false)} className="btn-primary w-full">Aplicar</button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

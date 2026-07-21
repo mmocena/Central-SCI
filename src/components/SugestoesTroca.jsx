@@ -38,7 +38,7 @@ function labelTrocaEscolhida(troca) {
 
 export function ModalInfoTrocas({ onClose }) {
   return createPortal(
-    <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
       <div
         className="w-full max-w-sm max-h-[85vh] overflow-y-auto bg-white rounded-2xl shadow-xl p-5 space-y-3"
         onClick={e => e.stopPropagation()}

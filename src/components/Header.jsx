@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { NavLink, Link } from 'react-router-dom'
 import { useFilaOffline } from '../lib/offlineQueue'
 import { useInstalado, useInstallPrompt, isIOS } from '../lib/pwaInstall'
@@ -67,8 +68,8 @@ const MENU_ITEMS = [
 ]
 
 function ModalInstalarIOS({ onClose }) {
-  return (
-    <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <p className="font-semibold text-sci-text">Instalar no iPhone/iPad</p>
@@ -83,7 +84,8 @@ function ModalInstalarIOS({ onClose }) {
           O app vai aparecer na tela inicial do seu aparelho.
         </p>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

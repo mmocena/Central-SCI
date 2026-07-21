@@ -59,7 +59,7 @@ export default function ModalListaExtintores({ titulo, linhas, grupos, onClose, 
     : linhas.length
 
   return createPortal(
-    <div className="fixed inset-0 z-[240] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[240] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
       <div
         className="w-full max-w-md max-h-[85vh] flex flex-col bg-white rounded-2xl shadow-xl overflow-hidden"
         onClick={e => e.stopPropagation()}
