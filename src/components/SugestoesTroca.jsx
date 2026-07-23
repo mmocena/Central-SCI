@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { candidatosParaLocal, trocaPlanejadaDoLocal, trocaQueResolveComoOrigem } from '../lib/trocas'
+import { candidatosParaLocal, trocaPlanejadaDoLocal, trocaQueResolveComoOrigem, chaveCandidato } from '../lib/trocas'
 
 function labelCandidatoTopo(c) {
   if (c.tipo !== 'local') return null
@@ -22,6 +22,14 @@ function labelCandidatoResto(c) {
     return <>Estoque <span className="text-blue-600 font-medium">RESERVA</span> — {c.estoque.tipo} {c.estoque.kg}kg</>
   }
   return <>Estoque SCI — {c.estoque.tipo} {c.estoque.kg}kg</>
+}
+
+function labelLocaisReservados(reservas) {
+  if (reservas.length === 1) {
+    const { local } = reservas[0]
+    return <>do local <strong>#{String(local.numero).padStart(2, '0')} — {local.edificacao}</strong></>
+  }
+  return <>de outros locais</>
 }
 
 function labelTrocaEscolhida(troca) {
@@ -83,8 +91,9 @@ export function ModalInfoTrocas({ onClose }) {
 // trocar fisicamente, é preciso registrar uma inspeção nova pra valer.
 // Compartilhado entre a guia Não Conformidades (bloco Capacidade extintora)
 // e o modal de alerta "Tipo divergente da planta" na página inicial.
-export function SugestoesTroca({ linha, todasLinhas, estoqueSCI, estoqueRESERVA, trocasPlanejadas, responsavel, processando, onDefinir, onCancelar }) {
+export function SugestoesTroca({ linha, todasLinhas, estoqueSCI, estoqueRESERVA, trocasPlanejadas, origensReservadas, responsavel, processando, onDefinir, onCancelar }) {
   const [infoAberto, setInfoAberto] = useState(false)
+  const [confirmarRoubo, setConfirmarRoubo] = useState(null)
   const trocaAtual = trocaPlanejadaDoLocal(trocasPlanejadas, linha.local, linha.slot)
 
   if (trocaAtual) {
@@ -123,6 +132,24 @@ export function SugestoesTroca({ linha, todasLinhas, estoqueSCI, estoqueRESERVA,
 
   const definindo = processando === `${linha.local.id}:${linha.slot}`
 
+  // Candidato que já é A recomendação de uma não conformidade real de
+  // Capacidade extintora em OUTRO local — reservado pra ele, não pode virar
+  // recomendação nem ser definido aqui sem avisar antes.
+  function reservasDeOutroLocal(c) {
+    const reservas = origensReservadas?.get(chaveCandidato(c))
+    if (!reservas) return []
+    return reservas.filter(r => !(r.local.id === linha.local.id && r.slot === linha.slot))
+  }
+
+  function handleClicarDefinir(c) {
+    const reservas = reservasDeOutroLocal(c)
+    if (reservas.length > 0) {
+      setConfirmarRoubo({ candidato: c, reservas })
+      return
+    }
+    onDefinir(linha, c, responsavel)
+  }
+
   return (
     <div className="mt-1.5 space-y-1">
       <div className="flex items-center gap-1">
@@ -135,26 +162,57 @@ export function SugestoesTroca({ linha, todasLinhas, estoqueSCI, estoqueRESERVA,
           i
         </button>
       </div>
-      {candidatos.map((c, i) => (
-        <button
-          key={c.tipo === 'local' ? `local-${c.local.id}-${c.slot}` : `estoque-${c.estoque.id}`}
-          onClick={() => onDefinir(linha, c, responsavel)}
-          disabled={definindo}
-          className="w-full flex items-center justify-between gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 text-left hover:border-slate-300 transition-colors disabled:opacity-40"
-        >
-          <span className="min-w-0">
-            {(i === 0 || c.tipo === 'local') && (
-              <p className="flex items-center gap-1.5 flex-wrap">
-                {labelCandidatoTopo(c)}
-                {i === 0 && <span className="text-[10px] font-bold text-green-600">RECOMENDADO</span>}
-              </p>
-            )}
-            <p className="text-xs text-slate-600">{labelCandidatoResto(c)}</p>
-          </span>
-          <span className="text-xs font-medium text-sci-red shrink-0">{definindo ? 'Definindo...' : 'Definir'}</span>
-        </button>
-      ))}
+      {candidatos.map((c, i) => {
+        const reservado = i === 0 && reservasDeOutroLocal(c).length > 0
+        return (
+          <button
+            key={c.tipo === 'local' ? `local-${c.local.id}-${c.slot}` : `estoque-${c.estoque.id}`}
+            onClick={() => handleClicarDefinir(c)}
+            disabled={definindo}
+            className="w-full flex items-center justify-between gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 text-left hover:border-slate-300 transition-colors disabled:opacity-40"
+          >
+            <span className="min-w-0">
+              {(i === 0 || c.tipo === 'local') && (
+                <p className="flex items-center gap-1.5 flex-wrap">
+                  {labelCandidatoTopo(c)}
+                  {i === 0 && !reservado && <span className="text-[10px] font-bold text-green-600">RECOMENDADO</span>}
+                </p>
+              )}
+              <p className="text-xs text-slate-600">{labelCandidatoResto(c)}</p>
+            </span>
+            <span className="text-xs font-medium text-sci-red shrink-0">{definindo ? 'Definindo...' : 'Definir'}</span>
+          </button>
+        )
+      })}
       {infoAberto && <ModalInfoTrocas onClose={() => setInfoAberto(false)} />}
+      {confirmarRoubo && createPortal(
+        <div className="fixed inset-0 z-[270] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setConfirmarRoubo(null)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <p className="font-semibold text-sci-text">Usar essa opção aqui?</p>
+            <p className="text-sm text-slate-500">
+              Essa opção é a mais recomendada pra resolver a não conformidade de <strong>Capacidade extintora</strong>{' '}
+              {labelLocaisReservados(confirmarRoubo.reservas)}. Se você usar ela aqui, pode sobrar sem opção recomendada
+              pra lá.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmarRoubo(null)} className="btn-secondary flex-1">
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  const { candidato } = confirmarRoubo
+                  setConfirmarRoubo(null)
+                  onDefinir(linha, candidato, responsavel)
+                }}
+                className="btn-primary flex-1"
+              >
+                Usar mesmo assim
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   )
 }

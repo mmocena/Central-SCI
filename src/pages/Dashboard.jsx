@@ -6,7 +6,7 @@ import {
   fetchEstoqueDeposito, fetchTrocasPlanejadas, definirTrocaPlanejada, cancelarTrocaPlanejada
 } from '../lib/queries'
 import { tipoDivergente, textoTipoDivergente } from '../lib/conformidade'
-import { locaisNecessitandoTroca } from '../lib/trocas'
+import { locaisNecessitandoTroca, origensRecomendadasParaCapacidade } from '../lib/trocas'
 import ModalDetalhesLocal from '../components/ModalDetalhesLocal'
 import ModalListaExtintores from '../components/ModalListaExtintores'
 import ModalAlertaTipoDivergente from '../components/ModalAlertaTipoDivergente'
@@ -31,23 +31,6 @@ function Stat({ label, valor, cls = 'text-sci-text', rotulo, onClick }) {
       </div>
       <p className="text-[11px] text-slate-500 leading-tight">{label}</p>
     </Tag>
-  )
-}
-
-// Card de conformidade — o card inteiro é clicável; o rótulo no canto
-// superior direito é só a indicação visual da ação (não é um botão à parte).
-function CardConformidade({ label, valor, cls = 'text-sci-text', rotulo, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full flex flex-col items-start gap-1 p-3 rounded-2xl border border-slate-200 bg-white shadow-sm text-left active:scale-[0.98] transition-transform"
-    >
-      <div className="w-full flex items-start justify-between gap-2">
-        <p className={`text-2xl font-bold leading-none ${cls}`}>{valor}</p>
-        <span className={`shrink-0 text-xs font-medium ${cls}`}>{rotulo}</span>
-      </div>
-      <p className="text-[11px] text-slate-500 leading-tight">{label}</p>
-    </button>
   )
 }
 
@@ -99,7 +82,7 @@ function formatValidadeN2(val) {
 function CardVistoria({ total, vistoriados, naoVistoriados, onVerTotal, onVerVistoriados, onVerNaoVistoriados }) {
   const pct = total > 0 ? Math.round((vistoriados / total) * 100) : 0
   return (
-    <div className="w-full p-4 rounded-2xl border border-slate-200 bg-white shadow-sm space-y-3">
+    <div className="w-full lg:flex-1 p-4 rounded-2xl border border-slate-200 bg-white shadow-sm space-y-3">
       <button onClick={onVerTotal} className="w-full flex items-center justify-between text-left active:opacity-70 transition-opacity">
         <div className="flex items-baseline gap-2">
           <p className="text-2xl font-bold leading-none text-sci-text">{total}</p>
@@ -108,6 +91,8 @@ function CardVistoria({ total, vistoriados, naoVistoriados, onVerTotal, onVerVis
         <p className="text-xl font-bold leading-none text-green-600">{pct}%</p>
       </button>
 
+      {/* Cada segmento arredonda dos dois lados; o espacinho entre eles
+          deixa vazar o cinza bem clarinho do fundo (bg-slate-100). */}
       <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden flex gap-0.5">
         {vistoriados > 0 && (
           <div className="h-full bg-green-500 rounded-full" style={{ width: `${(vistoriados / total) * 100}%` }} />
@@ -126,6 +111,134 @@ function CardVistoria({ total, vistoriados, naoVistoriados, onVerTotal, onVerVis
           <span className="w-2 h-2 rounded-full bg-slate-300 shrink-0" />
           Sem inspeção <strong className="text-sci-text">{naoVistoriados}</strong>
         </button>
+      </div>
+    </div>
+  )
+}
+
+// Só em telas lg+: anel de conformidade (situação atual, não período) —
+// verde/vermelho sempre, cinza (não vistoriados) só enquanto nem todos os
+// extintores tiverem sido vistoriados ao menos uma vez nesse período.
+// Arco de 180° (formato "(" deitado, tipo velocímetro) em vez do anel
+// fechado — largura dobrada, mesma altura do anel anterior.
+// vertical: arco "de pé" tipo ")" (usado no mobile, pra ocupar menos
+// largura) em vez do arco deitado "⌢" tipo velocímetro (desktop, lg+).
+function AnelConformidade({ conforme, naoConforme, naoVistoriados, onVerConforme, onVerNaoConforme, onVerNaoVistoriados, vertical = false }) {
+  const total = conforme + naoConforme + naoVistoriados
+  const raio = 82
+  const circunferencia = 2 * Math.PI * raio
+  // Mais de 180° pra ficar mais "oval": as duas pontas curvam pra dentro,
+  // ficando mais perto uma da outra, em vez de pararem exatamente na
+  // linha do centro (180° exatos = pontas nos "cantos").
+  const anguloArco = 190
+  const circunferenciaVisivel = circunferencia * (anguloArco / 360)
+  const pctConforme = total > 0 ? Math.round((conforme / total) * 100) : 0
+
+  // Deitado: viewBox 200x125, centro (100,100), abre pra cima (efetivo
+  // centrado em 270°). De pé: viewBox 128x200, centro (28,100), abre pra
+  // direita (efetivo centrado em 0°/360°) — mesma matemática do arco, só
+  // o centro/viewBox/rotação mudam. As dimensões extras (altura no
+  // deitado, largura no de pé) dão espaço pras pontas que agora avançam
+  // um pouco além da linha reta do meio.
+  const cx = vertical ? 28 : 100
+  const cy = 100
+  const rotacao = (vertical ? 0 : -90) - anguloArco / 2
+
+  const segmentos = [
+    { valor: conforme, cor: '#22c55e' },
+    { valor: naoConforme, cor: '#dc2626' },
+    ...(naoVistoriados > 0 ? [{ valor: naoVistoriados, cor: '#cbd5e1' }] : []),
+  ]
+  // Cada segmento arredonda dos dois lados (strokeLinecap="round"); um
+  // vãozinho entre eles (subtraído do fim de cada um, exceto o último)
+  // deixa vazar o cinza bem clarinho da trilha de fundo — igual ao de
+  // barras (gap-0.5 + rounded-full nos dois lados).
+  const espessura = 12
+  // strokeLinecap="round" faz cada ponta do traço abaular pra fora em
+  // espessura/2 — o vão precisa ser maior que espessura (as duas pontas
+  // arredondadas somadas) pra elas não se encontrarem/sobreporem. O "+ 4"
+  // vira o vão VISÍVEL de fato — convertido pra bater com os mesmos ~2px
+  // reais do gap-0.5 do de barras, considerando a escala local->físico de
+  // cada orientação (unidades do viewBox nem sempre é 1:1 com pixel).
+  const escalaLocal = vertical ? 82 / 128 : 162 / 200
+  const vaoVisivelPx = 2
+  const vaoArco = espessura + vaoVisivelPx / escalaLocal
+  const segmentosComValor = segmentos.filter(s => s.valor > 0)
+  let acumulado = 0
+  const arcos = segmentosComValor.map((s, i) => {
+    const tamanhoTotal = total > 0 ? (s.valor / total) * circunferenciaVisivel : 0
+    const ehUltimo = i === segmentosComValor.length - 1
+    const dash = Math.max(0, tamanhoTotal - (ehUltimo ? 0 : vaoArco))
+    const arco = { ...s, dash, offset: acumulado }
+    acumulado += tamanhoTotal
+    return arco
+  })
+
+  return (
+    <div className="w-full p-4 rounded-2xl border border-slate-200 bg-white shadow-sm flex items-center gap-5">
+      <div className={`relative shrink-0 ${vertical ? 'w-[82px] h-[128px]' : 'w-[162px] pb-2'}`}>
+        <svg viewBox={vertical ? '0 0 128 200' : '0 0 200 125'} className={vertical ? 'w-[82px] h-[128px]' : 'w-[162px] h-[93px]'}>
+          {/* rotate no <g>, pivotado no centro real do círculo (cx,cy) —
+              rotacionar o <svg> inteiro giraria em torno do centro do
+              viewport, que não coincide com o centro do arco */}
+          <g transform={`rotate(${rotacao} ${cx} ${cy})`}>
+            <circle cx={cx} cy={cy} r={raio} fill="none" stroke="#f1f5f9" strokeWidth={espessura} strokeLinecap="round" strokeDasharray={`${circunferenciaVisivel} ${circunferencia}`} />
+            {arcos.map((a, i) => a.valor > 0 && (
+              <circle
+                key={i}
+                cx={cx} cy={cy} r={raio}
+                fill="none"
+                stroke={a.cor}
+                strokeWidth={espessura}
+                strokeLinecap="round"
+                strokeDasharray={`${a.dash} ${circunferencia - a.dash}`}
+                strokeDashoffset={-a.offset}
+              />
+            ))}
+          </g>
+        </svg>
+        <div className={vertical ? 'absolute inset-0 flex flex-col items-start justify-center pl-1' : 'absolute inset-0 flex flex-col items-center justify-end pb-4'}>
+          <p className="text-lg font-bold leading-none text-sci-text">{pctConforme}%</p>
+          <p className="text-[10px] text-slate-400 leading-tight">conforme</p>
+        </div>
+      </div>
+
+      <div className="flex-1 min-w-0 space-y-2 text-xs pt-2">
+        <button onClick={onVerConforme} className="w-full flex items-center justify-between text-left active:opacity-70 transition-opacity">
+          <span className="flex items-center gap-1.5 text-slate-600">
+            <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+            Conforme
+          </span>
+          <span className="flex items-center gap-2 shrink-0">
+            <strong className="text-sci-text w-4 text-right">{conforme}</strong>
+            <span className="w-px h-3 bg-slate-200" />
+            <span className="w-16 text-green-600/70 font-medium">Ver lista</span>
+          </span>
+        </button>
+        <button onClick={onVerNaoConforme} className="w-full flex items-center justify-between text-left active:opacity-70 transition-opacity">
+          <span className="flex items-center gap-1.5 text-slate-600">
+            <span className="w-2 h-2 rounded-full bg-sci-red shrink-0" />
+            Não conforme
+          </span>
+          <span className="flex items-center gap-2 shrink-0">
+            <strong className="text-sci-text w-4 text-right">{naoConforme}</strong>
+            <span className="w-px h-3 bg-slate-200" />
+            <span className="w-16 text-sci-red/70 font-medium">Gerenciar</span>
+          </span>
+        </button>
+        {naoVistoriados > 0 && (
+          <button onClick={onVerNaoVistoriados} className="w-full flex items-center justify-between text-left active:opacity-70 transition-opacity">
+            <span className="flex items-center gap-1.5 text-slate-500">
+              <span className="w-2 h-2 rounded-full bg-slate-300 shrink-0" />
+              Não vistoriados
+            </span>
+            <span className="flex items-center gap-2 shrink-0">
+              <strong className="text-slate-500 w-4 text-right">{naoVistoriados}</strong>
+              <span className="w-px h-3 bg-slate-200" />
+              <span className="w-16 text-slate-500/70 font-medium">Ver lista</span>
+            </span>
+          </button>
+        )}
       </div>
     </div>
   )
@@ -269,12 +382,21 @@ export default function Dashboard() {
 
   const linhasTipoDivergente = linhas.filter(l => tipoDivergente(l.estado.extintor_tipo, l.local.planta_tipo_exigido))
 
-  // Quem tem chance real de ser resolvido por uma troca de Tipo — usado
-  // pelas sugestões de troca dentro do modal de "Tipo divergente da planta".
-  const { tipo: necessitandoTipo } = locaisNecessitandoTroca(linhas)
-  const necessitandoTipoKeys = new Set(necessitandoTipo.map(l => `${l.local.id}:${l.slot}`))
   const estoqueSCI = estoque.filter(e => e.categoria === 'SCI' && e.operacional)
   const estoqueRESERVA = estoque.filter(e => e.categoria === 'RESERVA' && e.operacional)
+
+  // Quem tem chance real de ser resolvido por uma troca de Tipo — usado
+  // pelas sugestões de troca dentro do modal de "Tipo divergente da planta".
+  const { capacidade: necessitandoCapacidade, tipo: necessitandoTipo } = locaisNecessitandoTroca(linhas)
+  const necessitandoTipoKeys = new Set(necessitandoTipo.map(l => `${l.local.id}:${l.slot}`))
+
+  // Candidatos que já são A recomendação de alguma não conformidade real de
+  // Capacidade extintora — pra não deixar as sugestões de Tipo divergente
+  // (só alerta, não é não conformidade) "roubarem" a opção certa de quem
+  // precisa de verdade.
+  const origensReservadas = origensRecomendadasParaCapacidade({
+    necessitandoCapacidade, linhas, estoqueSCI, estoqueRESERVA, trocasPlanejadas
+  })
 
   // "Vencendo em breve": N2 nos próximos 90 dias (mesmo limiar usado nas
   // tabelas de Situação/Histórico) e N3 dentro do ano vigente.
@@ -314,37 +436,45 @@ export default function Dashboard() {
   return (
     <div className="p-4 space-y-5">
 
-      {/* 1. Extintores em campo */}
-      <div className="space-y-3">
-        <p className="text-xs text-sci-muted font-semibold uppercase tracking-wider">Extintores em campo</p>
-        <CardVistoria
-          total={total}
-          vistoriados={vistoriados}
-          naoVistoriados={naoVistoriados}
-          onVerTotal={() => abrirLista('Extintores em campo', linhas)}
-          onVerVistoriados={() => abrirLista('Vistoriados', linhasVistoriadas)}
-          onVerNaoVistoriados={() => abrirLista('Sem inspeção', linhasNaoVistoriadas)}
-        />
-      </div>
+      {/* Linha 1 (lg+: lado a lado, mesma altura) — Extintores em campo | Conformidade */}
+      <div className="space-y-5 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-5">
+        {/* 1. Extintores em campo */}
+        <div className="space-y-3 lg:flex lg:flex-col">
+          <p className="text-xs text-sci-muted font-semibold uppercase tracking-wider">Extintores em campo</p>
+          <CardVistoria
+            total={total}
+            vistoriados={vistoriados}
+            naoVistoriados={naoVistoriados}
+            onVerTotal={() => abrirLista('Extintores em campo', linhas)}
+            onVerVistoriados={() => abrirLista('Vistoriados', linhasVistoriadas)}
+            onVerNaoVistoriados={() => abrirLista('Sem inspeção', linhasNaoVistoriadas)}
+          />
+        </div>
 
-      {/* 2. Conformidade */}
-      <div className="space-y-3">
-        <p className="text-xs text-sci-muted font-semibold uppercase tracking-wider">Conformidade</p>
-        <div className="grid grid-cols-2 gap-3">
-          <CardConformidade
-            label="Conforme"
-            valor={linhasConforme.length}
-            cls="text-green-600"
-            rotulo="Ver"
-            onClick={() => abrirLista('Conforme', linhasConforme, 'verde')}
-          />
-          <CardConformidade
-            label="Não conforme"
-            valor={linhasNaoConforme.length}
-            cls="text-sci-red"
-            rotulo="Gerenciar"
-            onClick={() => navigate('/nao-conformidades')}
-          />
+        {/* 2. Conformidade — arco de pé no mobile (ganha largura), deitado a partir de lg */}
+        <div className="space-y-3 lg:flex lg:flex-col">
+          <p className="text-xs text-sci-muted font-semibold uppercase tracking-wider">Conformidade</p>
+          <div className="lg:hidden">
+            <AnelConformidade
+              vertical
+              conforme={linhasConforme.length}
+              naoConforme={linhasNaoConforme.length}
+              naoVistoriados={naoVistoriados}
+              onVerConforme={() => abrirLista('Conforme', linhasConforme, 'verde')}
+              onVerNaoConforme={() => navigate('/nao-conformidades')}
+              onVerNaoVistoriados={() => abrirLista('Sem inspeção', linhasNaoVistoriadas)}
+            />
+          </div>
+          <div className="hidden lg:flex lg:flex-1">
+            <AnelConformidade
+              conforme={linhasConforme.length}
+              naoConforme={linhasNaoConforme.length}
+              naoVistoriados={naoVistoriados}
+              onVerConforme={() => abrirLista('Conforme', linhasConforme, 'verde')}
+              onVerNaoConforme={() => navigate('/nao-conformidades')}
+              onVerNaoVistoriados={() => abrirLista('Sem inspeção', linhasNaoVistoriadas)}
+            />
+          </div>
         </div>
       </div>
 
@@ -403,6 +533,7 @@ export default function Dashboard() {
           estoqueSCI={estoqueSCI}
           estoqueRESERVA={estoqueRESERVA}
           trocasPlanejadas={trocasPlanejadas}
+          origensReservadas={origensReservadas}
           responsavel={responsavel}
           processando={processando}
           onDefinir={handleDefinirTroca}

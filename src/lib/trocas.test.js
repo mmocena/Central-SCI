@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { locaisNecessitandoTroca, candidatosParaLocal, trocaPlanejadaDoLocal, trocaQueResolveComoOrigem } from './trocas'
+import { locaisNecessitandoTroca, candidatosParaLocal, trocaPlanejadaDoLocal, trocaQueResolveComoOrigem, chaveCandidato, origensRecomendadasParaCapacidade } from './trocas'
 
 function linha({ localId = 'L1', numero = 1, edificacao = 'PREDIO A', slot = 'A', tipoExigido, tipoAtual, situacao = 'conforme', motivo = null }) {
   return {
@@ -136,6 +136,46 @@ describe('candidatosParaLocal', () => {
       necessitando: l82, linhas: [l49, l51, l82], estoqueSCI: [], estoqueRESERVA: [], trocasPlanejadas: []
     })
     expect(candidatosSemPlano.find(c => c.tipo === 'local' && c.local.id === 'L49')).toBeDefined()
+  })
+})
+
+describe('origensRecomendadasParaCapacidade', () => {
+  it('reserva o candidato recomendado de uma necessidade de capacidade', () => {
+    const necessitando = linha({
+      localId: 'L51', edificacao: 'ELOS', tipoExigido: 'PQS BC', tipoAtual: 'PQS ABC',
+      situacao: 'nao_conforme', motivo: 'Capacidade extintora abaixo do exigido pela planta'
+    })
+    const doador = linha({ localId: 'L55', edificacao: 'ELOS', tipoExigido: 'PQS ABC', tipoAtual: 'PQS BC' })
+    const mapa = origensRecomendadasParaCapacidade({
+      necessitandoCapacidade: [necessitando], linhas: [necessitando, doador], estoqueSCI: [], estoqueRESERVA: [], trocasPlanejadas: []
+    })
+    const chave = chaveCandidato({ tipo: 'local', local: doador.local, slot: doador.slot })
+    expect(mapa.get(chave)).toEqual([{ local: necessitando.local, slot: necessitando.slot }])
+  })
+
+  it('duas necessidades de capacidade empatando no mesmo candidato ficam as duas reservadas (sem exclusão)', () => {
+    const necessitando1 = linha({
+      localId: 'L51', edificacao: 'ELOS', tipoExigido: 'PQS BC', tipoAtual: 'PQS ABC',
+      situacao: 'nao_conforme', motivo: 'Capacidade extintora abaixo do exigido pela planta'
+    })
+    const necessitando2 = linha({
+      localId: 'L52', edificacao: 'ELOS', tipoExigido: 'PQS BC', tipoAtual: 'PQS ABC',
+      situacao: 'nao_conforme', motivo: 'Capacidade extintora abaixo do exigido pela planta'
+    })
+    const estoqueSCI = [{ id: 'E1', tipo: 'PQS BC', kg: 6, categoria: 'SCI', quantidade: 5 }]
+    const mapa = origensRecomendadasParaCapacidade({
+      necessitandoCapacidade: [necessitando1, necessitando2],
+      linhas: [necessitando1, necessitando2], estoqueSCI, estoqueRESERVA: [], trocasPlanejadas: []
+    })
+    const chave = chaveCandidato({ tipo: 'estoque_sci', estoque: estoqueSCI[0] })
+    expect(mapa.get(chave)).toHaveLength(2)
+  })
+
+  it('candidato sem nenhuma necessidade de capacidade recomendando ele não aparece no mapa', () => {
+    const mapa = origensRecomendadasParaCapacidade({
+      necessitandoCapacidade: [], linhas: [], estoqueSCI: [], estoqueRESERVA: [], trocasPlanejadas: []
+    })
+    expect(mapa.size).toBe(0)
   })
 })
 

@@ -29,6 +29,13 @@ function chaveOrigemEstoque(estoqueId) {
   return `estoque:${estoqueId}`
 }
 
+// Mesma chave de origem usada internamente em candidatosParaLocal, exposta
+// pra quem (fora deste módulo) precisa comparar candidatos entre listas
+// diferentes — ex: origensRecomendadasParaCapacidade, abaixo.
+export function chaveCandidato(c) {
+  return c.tipo === 'local' ? chaveOrigemLocal(c.local.id, c.slot) : chaveOrigemEstoque(c.estoque.id)
+}
+
 // Todas as opções disponíveis pra suprir um local que precisa de troca —
 // não escolhe uma só, mostra tudo que ainda não foi reivindicado por outro
 // plano. A primeira da lista é a recomendada (segue a hierarquia: recíproca
@@ -94,4 +101,24 @@ export function trocaQueResolveComoOrigem(trocasPlanejadas, local, slot) {
   return trocasPlanejadas.find(t =>
     t.origem_tipo === 'local' && t.origem_local_id === local.id && t.origem_slot === slot
   ) || null
+}
+
+// Mapeia cada candidato que é a RECOMENDAÇÃO (índice 0) de alguma não
+// conformidade real de Capacidade extintora pros locais que dependem dele
+// — usado pra impedir que esse mesmo candidato seja oferecido como
+// recomendado também pra um simples alerta de Tipo divergente (que não é
+// não conformidade de verdade) em outro lugar da interface. Duas
+// necessidades de Capacidade que empatem no mesmo candidato ficam as duas
+// no array — entre Capacidade e Capacidade não há proteção, só entre
+// Capacidade e Tipo divergente puro.
+export function origensRecomendadasParaCapacidade({ necessitandoCapacidade, linhas, estoqueSCI, estoqueRESERVA, trocasPlanejadas }) {
+  const mapa = new Map()
+  for (const necessitando of necessitandoCapacidade) {
+    const [recomendado] = candidatosParaLocal({ necessitando, linhas, estoqueSCI, estoqueRESERVA, trocasPlanejadas })
+    if (!recomendado) continue
+    const chave = chaveCandidato(recomendado)
+    if (!mapa.has(chave)) mapa.set(chave, [])
+    mapa.get(chave).push({ local: necessitando.local, slot: necessitando.slot })
+  }
+  return mapa
 }
