@@ -142,6 +142,12 @@ create table historico_operacoes (
 
   payload jsonb not null default '{}',
 
+  -- Conformidade calculada no momento desta operação (só pra modo='inspecao';
+  -- fica null nos outros modos). Nunca é reescrita depois — é o retrato da
+  -- inspeção, não a situação atual (essa vive em local_estado_atual). Existe
+  -- pra facilitar consulta sem abrir o payload jsonb.
+  situacao_conformidade text check (situacao_conformidade in ('conforme', 'nao_conforme')),
+
   -- fila offline: mesma chave de idempotência do client_op_id de ordens_manutencao
   client_op_id uuid unique
 );
@@ -226,8 +232,8 @@ create or replace function registrar_inspecao(
 language plpgsql
 as $$
 begin
-  insert into historico_operacoes (modo, local_id, slot, responsavel, equipe, payload, client_op_id)
-  values ('inspecao', p_local_id, p_slot, p_responsavel, p_equipe, p_payload, p_client_op_id)
+  insert into historico_operacoes (modo, local_id, slot, responsavel, equipe, payload, situacao_conformidade, client_op_id)
+  values ('inspecao', p_local_id, p_slot, p_responsavel, p_equipe, p_payload, p_conformidade, p_client_op_id)
   on conflict (client_op_id) do nothing;
 
   insert into local_estado_atual (
@@ -392,6 +398,49 @@ begin
   end if;
 end;
 $$;
+
+-- ============================================================
+-- Situação atual acompanha validade vencida sozinha, sem depender de nova
+-- inspeção: capacidade/sinalização/operacional só mudam numa inspeção nova,
+-- mas validade N2/N3 é sensível ao calendário — sem isso, local_estado_atual
+-- ficava com situacao_conformidade "congelada" da última inspeção mesmo
+-- depois de vencer, enquanto os alertas de vencimento (calculados na hora,
+-- no cliente) já mostravam a informação certa. Só de mão única (conforme ->
+-- não conforme); nunca reverte — só uma inspeção nova volta a marcar
+-- conforme, igual já era antes. Roda 1x por dia; folga de até 24h é
+-- aceitável dado que validade é de granularidade mensal/anual.
+-- ============================================================
+create extension if not exists pg_cron;
+
+create or replace function atualizar_conformidade_por_validade_vencida()
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  update local_estado_atual
+  set situacao_conformidade = 'nao_conforme', atualizado_em = now()
+  where situacao_conformidade = 'conforme'
+    and (validade_nivel2 <= current_date or validade_nivel3 <= current_date);
+
+  -- Acrescenta o motivo (idempotente — só se ainda não estiver no texto).
+  -- Textos iguais aos fixos MOTIVO_VALIDADE_N2/N3 em src/lib/conformidade.js,
+  -- pra separarMotivos() no cliente reconhecer normalmente.
+  update local_estado_atual
+  set motivo_nao_conformidade = trim(both ', ' from concat_ws(', ', nullif(motivo_nao_conformidade, ''), 'Validade Nível 2 vencida')),
+      atualizado_em = now()
+  where validade_nivel2 <= current_date
+    and coalesce(motivo_nao_conformidade, '') not like '%Validade Nível 2 vencida%';
+
+  update local_estado_atual
+  set motivo_nao_conformidade = trim(both ', ' from concat_ws(', ', nullif(motivo_nao_conformidade, ''), 'Validade Nível 3 vencida')),
+      atualizado_em = now()
+  where validade_nivel3 <= current_date
+    and coalesce(motivo_nao_conformidade, '') not like '%Validade Nível 3 vencida%';
+end;
+$$;
+
+select cron.schedule('atualizar-conformidade-vencida', '0 3 * * *', 'select atualizar_conformidade_por_validade_vencida();');
 
 -- ============================================================
 -- Realtime: habilitar para as tabelas que a UI escuta ao vivo via
