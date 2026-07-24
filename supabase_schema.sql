@@ -21,6 +21,15 @@ create table fatores_nao_operacionalidade (
   ordem int default 0
 );
 
+-- Fatores de sinalização não conforme (configurado pelo admin) — mesmo
+-- padrão de fatores_nao_operacionalidade, lista própria pra não misturar.
+create table fatores_sinalizacao_nao_conforme (
+  id uuid primary key default gen_random_uuid(),
+  descricao text not null,
+  ativo boolean default true,
+  ordem int default 0
+);
+
 -- Locais (cadastrado pelo admin)
 create table locais (
   id uuid primary key default gen_random_uuid(),
@@ -33,6 +42,8 @@ create table locais (
   descricao_slot_b text,             -- identificação do extintor B (dual-slot)
   planta_tipo_exigido text,          -- ex: CO²
   planta_cap_ext_exigida text,       -- ex: 5-B:C
+  sinalizacao_exigida_a text check (sinalizacao_exigida_a in ('parede', 'haste')),
+  sinalizacao_exigida_b text check (sinalizacao_exigida_b in ('parede', 'haste')),
   ativo boolean default true,
   criado_em timestamptz default now()
 );
@@ -56,6 +67,11 @@ create table local_estado_atual (
   ),
   motivo_nao_conformidade text,
   observacoes text,
+  -- fatores selecionados na última inspeção (descrições, incl. texto livre
+  -- de "Outros") — fonte estruturada única pra Observações e pro gráfico de
+  -- fatores no Relatórios, sem precisar reextrair de motivo_nao_conformidade.
+  fatores_operacionais text[],
+  fatores_sinalizacao text[],
 
   -- manutenção — colunas não usadas mais pelas RPCs (o local nunca fica
   -- vinculado a uma ordem de manutenção; o controle de pendências é feito
@@ -232,7 +248,8 @@ create or replace function registrar_inspecao(
   p_payload jsonb, p_conformidade text, p_client_op_id uuid,
   p_extintor_tipo text, p_extintor_kg numeric, p_cap_ext_atual text,
   p_reserva_empresa boolean, p_motivo_nao_conformidade text, p_observacoes text,
-  p_validade_nivel2 date, p_validade_nivel3 date
+  p_validade_nivel2 date, p_validade_nivel3 date,
+  p_fatores_operacionais text[] default null, p_fatores_sinalizacao text[] default null
 ) returns void
 language plpgsql
 as $$
@@ -244,11 +261,13 @@ begin
   insert into local_estado_atual (
     local_id, slot, extintor_tipo, extintor_kg, cap_ext_atual, reserva_empresa,
     situacao_conformidade, motivo_nao_conformidade, observacoes,
+    fatores_operacionais, fatores_sinalizacao,
     validade_nivel2, validade_nivel3, data_ultima_inspecao,
     responsavel_ultima_inspecao, equipe_ultima_inspecao, atualizado_em
   ) values (
     p_local_id, p_slot, p_extintor_tipo, p_extintor_kg, p_cap_ext_atual, coalesce(p_reserva_empresa, false),
     p_conformidade, p_motivo_nao_conformidade, p_observacoes,
+    p_fatores_operacionais, p_fatores_sinalizacao,
     p_validade_nivel2, p_validade_nivel3, now(), p_responsavel, p_equipe, now()
   )
   on conflict (local_id, slot) do update set
@@ -259,6 +278,8 @@ begin
     situacao_conformidade = excluded.situacao_conformidade,
     motivo_nao_conformidade = excluded.motivo_nao_conformidade,
     observacoes = excluded.observacoes,
+    fatores_operacionais = excluded.fatores_operacionais,
+    fatores_sinalizacao = excluded.fatores_sinalizacao,
     validade_nivel2 = excluded.validade_nivel2,
     validade_nivel3 = excluded.validade_nivel3,
     data_ultima_inspecao = excluded.data_ultima_inspecao,
@@ -282,7 +303,8 @@ create or replace function registrar_envio_manutencao(
   p_substituto_reserva boolean, p_substituto_origem text, p_substituto_operacional boolean,
   p_payload jsonb, p_conformidade text, p_motivo_nao_conformidade text,
   p_validade_nivel2 date, p_validade_nivel3 date,
-  p_desconta_estoque boolean, p_estoque_categoria text
+  p_desconta_estoque boolean, p_estoque_categoria text,
+  p_fatores_operacionais text[] default null, p_fatores_sinalizacao text[] default null
 ) returns uuid
 language plpgsql
 as $$
@@ -317,11 +339,13 @@ begin
   insert into local_estado_atual (
     local_id, slot, extintor_tipo, extintor_kg, cap_ext_atual, reserva_empresa,
     situacao_conformidade, motivo_nao_conformidade,
+    fatores_operacionais, fatores_sinalizacao,
     validade_nivel2, validade_nivel3, data_ultima_logistica,
     responsavel_ultima_logistica, equipe_ultima_logistica, atualizado_em
   ) values (
     p_local_id, p_slot, p_substituto_tipo, p_substituto_kg, p_substituto_cap_ext, p_substituto_reserva,
     p_conformidade, p_motivo_nao_conformidade,
+    p_fatores_operacionais, p_fatores_sinalizacao,
     p_validade_nivel2, p_validade_nivel3, now(), p_responsavel, p_equipe, now()
   )
   on conflict (local_id, slot) do update set
@@ -331,6 +355,8 @@ begin
     reserva_empresa = excluded.reserva_empresa,
     situacao_conformidade = excluded.situacao_conformidade,
     motivo_nao_conformidade = excluded.motivo_nao_conformidade,
+    fatores_operacionais = excluded.fatores_operacionais,
+    fatores_sinalizacao = excluded.fatores_sinalizacao,
     validade_nivel2 = excluded.validade_nivel2,
     validade_nivel3 = excluded.validade_nivel3,
     data_ultima_logistica = excluded.data_ultima_logistica,
@@ -524,3 +550,9 @@ insert into fatores_nao_operacionalidade (descricao, ordem) values
   ('Pino de segurança ausente', 6),
   ('Validade Nível 2 vencida', 7),
   ('Validade Nível 3 vencida', 8);
+
+insert into fatores_sinalizacao_nao_conforme (descricao, ordem) values
+  ('Placa ausente', 1),
+  ('Placa danificada/ilegível', 2),
+  ('Placa com posição inadequada', 3),
+  ('Sinalização obstruída', 4);

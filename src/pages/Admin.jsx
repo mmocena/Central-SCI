@@ -3,6 +3,19 @@ import { supabase } from '../lib/supabase'
 import { verificarSenhaAdmin, salvarRegistroAdmin, atualizarCampoAdmin, excluirRegistroAdmin } from '../lib/queries'
 import { useToast } from '../components/Toast'
 
+function ToggleSinalizacao({ valor, onChange }) {
+  return (
+    <div className="flex gap-2">
+      {['parede', 'haste'].map(v => (
+        <button key={v} type="button" onClick={() => onChange(v)}
+          className={`btn-option flex-1 text-sm ${valor === v ? 'selected' : ''}`}>
+          {v === 'parede' ? 'Parede' : 'Haste'}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function avisarResultado(showToast, resultado, msgSucesso) {
   showToast(
     resultado.queued ? 'Sem conexão — será enviado automaticamente ao reconectar.' : msgSucesso,
@@ -102,7 +115,8 @@ function AdminLocais() {
     numero: '', edificacao: '', descricao: '',
     tem_slot_a: true, tem_slot_b: false,
     descricao_slot_a: '', descricao_slot_b: '',
-    planta_tipo_exigido: '', planta_cap_ext_exigida: ''
+    planta_tipo_exigido: '', planta_cap_ext_exigida: '',
+    sinalizacao_exigida_a: '', sinalizacao_exigida_b: ''
   })
   const [salvando, setSalvando] = useState(false)
   const [editandoId, setEditandoId] = useState(null)
@@ -135,7 +149,9 @@ function AdminLocais() {
       descricao_slot_a: l.descricao_slot_a || '',
       descricao_slot_b: l.descricao_slot_b || '',
       planta_tipo_exigido: l.planta_tipo_exigido || '',
-      planta_cap_ext_exigida: l.planta_cap_ext_exigida || ''
+      planta_cap_ext_exigida: l.planta_cap_ext_exigida || '',
+      sinalizacao_exigida_a: l.sinalizacao_exigida_a || '',
+      sinalizacao_exigida_b: l.sinalizacao_exigida_b || ''
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -143,7 +159,11 @@ function AdminLocais() {
   function cancelarEdicao() {
     setEditandoId(null)
     setFormAberto(false)
-    setForm({ numero: '', edificacao: '', descricao: '', tem_slot_a: true, tem_slot_b: false, descricao_slot_a: '', descricao_slot_b: '', planta_tipo_exigido: '', planta_cap_ext_exigida: '' })
+    setForm({
+      numero: '', edificacao: '', descricao: '', tem_slot_a: true, tem_slot_b: false,
+      descricao_slot_a: '', descricao_slot_b: '', planta_tipo_exigido: '', planta_cap_ext_exigida: '',
+      sinalizacao_exigida_a: '', sinalizacao_exigida_b: ''
+    })
   }
 
   async function salvar() {
@@ -158,7 +178,9 @@ function AdminLocais() {
       descricao_slot_a: form.tem_slot_b ? (form.descricao_slot_a.trim() || null) : null,
       descricao_slot_b: form.tem_slot_b ? (form.descricao_slot_b.trim() || null) : null,
       planta_tipo_exigido: form.planta_tipo_exigido.trim() || null,
-      planta_cap_ext_exigida: form.planta_cap_ext_exigida.trim().toUpperCase() || null
+      planta_cap_ext_exigida: form.planta_cap_ext_exigida.trim().toUpperCase() || null,
+      sinalizacao_exigida_a: form.sinalizacao_exigida_a || null,
+      sinalizacao_exigida_b: form.tem_slot_b ? (form.sinalizacao_exigida_b || null) : null
     }
     let resultado
     try {
@@ -227,6 +249,17 @@ function AdminLocais() {
             </datalist>
           </div>
         </div>
+
+        {!form.tem_slot_b && (
+          <div className="space-y-1">
+            <label className="text-xs text-sci-muted">Tipo de Sinalização</label>
+            <ToggleSinalizacao valor={form.sinalizacao_exigida_a} onChange={v => setForm(f => ({ ...f, sinalizacao_exigida_a: v }))} />
+            <p className="text-xs text-slate-400">
+              Suporte de solo próximo à parede → Parede. Suporte de solo afastado da parede → Haste.
+            </p>
+          </div>
+        )}
+
         <div className="flex gap-4">
           <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
             <input type="checkbox" checked={form.tem_slot_a} onChange={e => setForm(f => ({ ...f, tem_slot_a: e.target.checked }))} className="accent-red-500" />
@@ -242,19 +275,34 @@ function AdminLocais() {
           <div className="space-y-2">
             <p className="text-xs text-sci-muted font-medium">Identificação dos extintores (opcional)</p>
             <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs text-slate-400">Extintor A</label>
-                <input type="text" value={form.descricao_slot_a}
-                  onChange={e => setForm(f => ({ ...f, descricao_slot_a: e.target.value }))}
-                  placeholder="ex: parede" className="w-full mt-1" />
+              <div className="space-y-2">
+                <div>
+                  <label className="text-xs text-slate-400">Extintor A</label>
+                  <input type="text" value={form.descricao_slot_a}
+                    onChange={e => setForm(f => ({ ...f, descricao_slot_a: e.target.value }))}
+                    placeholder="ex: parede" className="w-full mt-1" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400">Tipo de Sinalização</label>
+                  <ToggleSinalizacao valor={form.sinalizacao_exigida_a} onChange={v => setForm(f => ({ ...f, sinalizacao_exigida_a: v }))} />
+                </div>
               </div>
-              <div>
-                <label className="text-xs text-slate-400">Extintor B</label>
-                <input type="text" value={form.descricao_slot_b}
-                  onChange={e => setForm(f => ({ ...f, descricao_slot_b: e.target.value }))}
-                  placeholder="ex: chão" className="w-full mt-1" />
+              <div className="space-y-2">
+                <div>
+                  <label className="text-xs text-slate-400">Extintor B</label>
+                  <input type="text" value={form.descricao_slot_b}
+                    onChange={e => setForm(f => ({ ...f, descricao_slot_b: e.target.value }))}
+                    placeholder="ex: chão" className="w-full mt-1" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400">Tipo de Sinalização</label>
+                  <ToggleSinalizacao valor={form.sinalizacao_exigida_b} onChange={v => setForm(f => ({ ...f, sinalizacao_exigida_b: v }))} />
+                </div>
               </div>
             </div>
+            <p className="text-xs text-slate-400">
+              Suporte de solo próximo à parede → Parede. Suporte de solo afastado da parede → Haste.
+            </p>
           </div>
         )}
         <button onClick={salvar} disabled={salvando} className="btn-primary w-full">
@@ -413,17 +461,40 @@ function AdminTipos() {
 }
 
 function AdminFatores() {
+  const [grupo, setGrupo] = useState('operacional')
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        {[
+          { valor: 'operacional', label: 'Não Operacionalidade' },
+          { valor: 'sinalizacao', label: 'Sinalização' }
+        ].map(g => (
+          <button key={g.valor} onClick={() => setGrupo(g.valor)}
+            className={`btn-option text-xs flex-1 ${grupo === g.valor ? 'selected' : ''}`}>
+            {g.label}
+          </button>
+        ))}
+      </div>
+      {grupo === 'operacional'
+        ? <ListaFatores tabela="fatores_nao_operacionalidade" placeholder="ex: Lacre violado ou ausente" />
+        : <ListaFatores tabela="fatores_sinalizacao_nao_conforme" placeholder="ex: Placa ausente" />}
+    </div>
+  )
+}
+
+function ListaFatores({ tabela, placeholder }) {
   const showToast = useToast()
   const [fatores, setFatores] = useState([])
   const [arquivados, setArquivados] = useState([])
   const [descricao, setDescricao] = useState('')
   const [verArquivados, setVerArquivados] = useState(false)
 
-  useEffect(() => { carregar() }, [])
+  useEffect(() => { carregar() }, [tabela])
   async function carregar() {
     const [{ data: ativos }, { data: inativos }] = await Promise.all([
-      supabase.from('fatores_nao_operacionalidade').select('*').eq('ativo', true).order('ordem'),
-      supabase.from('fatores_nao_operacionalidade').select('*').eq('ativo', false).order('ordem')
+      supabase.from(tabela).select('*').eq('ativo', true).order('ordem'),
+      supabase.from(tabela).select('*').eq('ativo', false).order('ordem')
     ])
     setFatores(ativos || [])
     setArquivados(inativos || [])
@@ -431,7 +502,7 @@ function AdminFatores() {
   async function salvar() {
     if (!descricao.trim()) return
     try {
-      const resultado = await salvarRegistroAdmin({ tabela: 'fatores_nao_operacionalidade', payload: { descricao: descricao.trim(), ordem: fatores.length + 1 } })
+      const resultado = await salvarRegistroAdmin({ tabela, payload: { descricao: descricao.trim(), ordem: fatores.length + 1 } })
       setDescricao('')
       avisarResultado(showToast, resultado, 'Fator adicionado.')
       carregar()
@@ -439,14 +510,14 @@ function AdminFatores() {
   }
   async function arquivar(id) {
     try {
-      const resultado = await atualizarCampoAdmin({ tabela: 'fatores_nao_operacionalidade', id, campos: { ativo: false } })
+      const resultado = await atualizarCampoAdmin({ tabela, id, campos: { ativo: false } })
       avisarResultado(showToast, resultado, 'Fator arquivado.')
       carregar()
     } catch (e) { alert('Erro: ' + e.message) }
   }
   async function restaurar(id) {
     try {
-      const resultado = await atualizarCampoAdmin({ tabela: 'fatores_nao_operacionalidade', id, campos: { ativo: true } })
+      const resultado = await atualizarCampoAdmin({ tabela, id, campos: { ativo: true } })
       avisarResultado(showToast, resultado, 'Fator restaurado.')
       carregar()
     } catch (e) { alert('Erro: ' + e.message) }
@@ -454,7 +525,7 @@ function AdminFatores() {
   async function excluir(id) {
     if (!confirm('Excluir permanentemente? Esta ação não pode ser desfeita.')) return
     try {
-      const resultado = await excluirRegistroAdmin({ tabela: 'fatores_nao_operacionalidade', id })
+      const resultado = await excluirRegistroAdmin({ tabela, id })
       avisarResultado(showToast, resultado, 'Fator excluído.')
       carregar()
     } catch (e) { alert('Erro: ' + e.message) }
@@ -465,7 +536,7 @@ function AdminFatores() {
       <div className="card space-y-3">
         <p className="text-sm font-bold text-sci-text">Novo Fator</p>
         <input type="text" value={descricao} onChange={e => setDescricao(e.target.value)}
-          placeholder="ex: Lacre violado ou ausente"
+          placeholder={placeholder}
           className="w-full" />
         <button onClick={salvar} className="btn-primary w-full">Adicionar</button>
       </div>

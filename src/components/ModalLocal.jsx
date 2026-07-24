@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { fetchTiposExtintor, fetchFatoresNaoOperacionalidade, registrarInspecao, registrarEnvioManutencao, marcarReserva } from '../lib/queries'
+import { fetchTiposExtintor, fetchFatoresNaoOperacionalidade, fetchFatoresSinalizacao, registrarInspecao, registrarEnvioManutencao, marcarReserva } from '../lib/queries'
 import { calcularConformidade } from '../lib/conformidade'
 import IconeExtintor from './IconeExtintor'
 import FormInspecao from './FormInspecao'
@@ -15,6 +15,7 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
   const showToast = useToast()
   const [tiposExtintor, setTiposExtintor] = useState([])
   const [fatores, setFatores] = useState([])
+  const [fatoresSinalizacao, setFatoresSinalizacao] = useState([])
   const [modoManutencao, setModoManutencao] = useState(envioPreAberto ? 'envio' : null)
   const [reservaAtiva, setReservaAtiva] = useState(false)
   const [avisoReserva, setAvisoReserva] = useState(false)
@@ -26,6 +27,7 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
   useEffect(() => {
     fetchTiposExtintor().then(setTiposExtintor)
     fetchFatoresNaoOperacionalidade().then(setFatores)
+    fetchFatoresSinalizacao().then(setFatoresSinalizacao)
   }, [])
 
   useEffect(() => {
@@ -229,6 +231,7 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
             slot={slotAtivo}
             tiposExtintor={tiposExtintor}
             fatores={fatores}
+            fatoresSinalizacao={fatoresSinalizacao}
             anosN3={ANOS_N3}
             equipes={EQUIPES}
             bloqueado={!responsavel}
@@ -270,6 +273,7 @@ export default function ModalLocal({ local, responsavel, onClose, onAtualizar, s
             estadoAtual={estadoSlot}
             tiposExtintor={tiposExtintor}
             fatores={fatores}
+            fatoresSinalizacao={fatoresSinalizacao}
             anosN3={ANOS_N3}
             equipes={EQUIPES}
             titulo="Formulário de Inspeção"

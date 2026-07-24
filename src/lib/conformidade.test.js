@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcularConformidade, motivosNaoConformidade, textoObservacaoAutomatica, separarMotivos, fatoresOperacionaisDoMotivo, n2Vencida, n3Vencida, tipoDivergente, textoTipoDivergente } from './conformidade'
+import { calcularConformidade, motivosNaoConformidade, textoObservacaoAutomatica, textoDetalhesFatores, separarMotivos, fatoresOperacionaisDoMotivo, n2Vencida, n3Vencida, tipoDivergente, textoTipoDivergente } from './conformidade'
 
 describe('calcularConformidade', () => {
   it('só existem duas situações possíveis: conforme e nao_conforme', () => {
@@ -153,14 +153,14 @@ describe('n2Vencida / n3Vencida', () => {
 })
 
 describe('motivosNaoConformidade', () => {
-  it('não operacional sem fatores selecionados usa texto genérico', () => {
-    expect(motivosNaoConformidade({ operacional: false, fatoresSelecionados: [] }))
+  it('não operacional sempre usa a categoria fixa, independente de fatores', () => {
+    expect(motivosNaoConformidade({ operacional: false }))
       .toEqual(['Extintor não operacional'])
   })
 
-  it('não operacional com fatores selecionados lista os fatores', () => {
-    expect(motivosNaoConformidade({ operacional: false, fatoresSelecionados: ['Lacre violado', 'Manômetro zerado'] }))
-      .toEqual(['Lacre violado, Manômetro zerado'])
+  it('sinalização não conforme sempre usa a categoria curta fixa', () => {
+    expect(motivosNaoConformidade({ operacional: true, sinalizacaoOk: false }))
+      .toEqual(['Sinalização'])
   })
 
   it('acumula motivos de sinalização e capacidade juntos', () => {
@@ -170,7 +170,7 @@ describe('motivosNaoConformidade', () => {
       capExtOk: false
     })
     expect(motivos).toEqual([
-      'Sinalização não conforme',
+      'Sinalização',
       'Capacidade extintora abaixo do exigido pela planta'
     ])
   })
@@ -200,7 +200,7 @@ describe('motivosNaoConformidade', () => {
 
   it('N2 e N3 vencidos juntos com outro problema geram todos os motivos', () => {
     expect(motivosNaoConformidade({
-      operacional: false, fatoresSelecionados: [],
+      operacional: false,
       validadeNivel2: '2020-01', validadeNivel3: '2020'
     })).toEqual(['Validade Nível 2 vencida', 'Validade Nível 3 vencida', 'Extintor não operacional'])
   })
@@ -219,9 +219,19 @@ describe('separarMotivos', () => {
       .toEqual({ ...VAZIO, capExt: true })
   })
 
-  it('reconhece sinalização isolada', () => {
+  it('reconhece sinalização isolada, formato novo (categoria curta)', () => {
+    expect(separarMotivos('Sinalização'))
+      .toEqual({ ...VAZIO, sinalizacao: true })
+  })
+
+  it('reconhece sinalização isolada, formato antigo (compatibilidade com dados históricos)', () => {
     expect(separarMotivos('Sinalização não conforme'))
       .toEqual({ ...VAZIO, sinalizacao: true })
+  })
+
+  it('reconhece "Extintor não operacional" isolado (formato novo, categoria fixa)', () => {
+    expect(separarMotivos('Extintor não operacional'))
+      .toEqual({ ...VAZIO, operacional: true })
   })
 
   it('reconhece tipo divergente isolado, sem marcar operacional', () => {
@@ -234,7 +244,7 @@ describe('separarMotivos', () => {
     expect(separarMotivos('Validade Nível 3 vencida')).toEqual({ ...VAZIO, validadeN3: true })
   })
 
-  it('fatores de não operacionalidade (texto livre) marcam operacional', () => {
+  it('fatores de não operacionalidade em texto livre (formato antigo) marcam operacional', () => {
     expect(separarMotivos('Lacre violado, Manômetro zerado'))
       .toEqual({ ...VAZIO, operacional: true })
   })
@@ -275,6 +285,24 @@ describe('fatoresOperacionaisDoMotivo', () => {
 
   it('motivo só com categorias fixas não retorna fatores', () => {
     expect(fatoresOperacionaisDoMotivo('Sinalização não conforme')).toEqual([])
+  })
+
+  it('motivo no formato novo ("Extintor não operacional") não retorna fatores (detalhe vem de fatores_operacionais, não mais do texto)', () => {
+    expect(fatoresOperacionaisDoMotivo('Extintor não operacional')).toEqual([])
+  })
+})
+
+describe('textoDetalhesFatores', () => {
+  it('sem fatores selecionados gera texto vazio', () => {
+    expect(textoDetalhesFatores({})).toBe('')
+    expect(textoDetalhesFatores({ fatoresOperacionais: [], fatoresSinalizacao: [] })).toBe('')
+  })
+
+  it('junta fatores operacionais e de sinalização numa frase só', () => {
+    expect(textoDetalhesFatores({
+      fatoresOperacionais: ['Lacre violado'],
+      fatoresSinalizacao: ['Placa ausente']
+    })).toBe('Lacre violado, Placa ausente.')
   })
 })
 

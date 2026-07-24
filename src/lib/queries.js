@@ -37,6 +37,17 @@ export async function fetchFatoresNaoOperacionalidade() {
   return data
 }
 
+export async function fetchFatoresSinalizacao() {
+  const { data, error } = await supabase
+    .from('fatores_sinalizacao_nao_conforme')
+    .select('*')
+    .eq('ativo', true)
+    .order('ordem')
+
+  if (error) throw error
+  return data
+}
+
 export async function fetchHistoricoInspecoes() {
   const { data, error } = await supabase
     .from('historico_operacoes')
@@ -119,7 +130,9 @@ async function _registrarInspecao({ localId, slot, responsavel, equipe, payload,
     p_motivo_nao_conformidade: payload.motivo_nao_conformidade ?? null,
     p_observacoes: payload.observacoes ?? null,
     p_validade_nivel2: payload.validade_nivel2 ? payload.validade_nivel2 + '-01' : null,
-    p_validade_nivel3: payload.validade_nivel3 ? payload.validade_nivel3 + '-12-01' : null
+    p_validade_nivel3: payload.validade_nivel3 ? payload.validade_nivel3 + '-12-01' : null,
+    p_fatores_operacionais: payload.fatores_operacionais?.length ? payload.fatores_operacionais : null,
+    p_fatores_sinalizacao: payload.fatores_sinalizacao?.length ? payload.fatores_sinalizacao : null
   })
   if (error) throw error
 }
@@ -158,7 +171,9 @@ async function _registrarEnvioManutencao({ localId, slot, responsavel, equipe, e
     p_validade_nivel2: inspecao.validade_nivel2 ? inspecao.validade_nivel2 + '-01' : null,
     p_validade_nivel3: inspecao.validade_nivel3 ? inspecao.validade_nivel3 + '-12-01' : null,
     p_desconta_estoque: descontaEstoque,
-    p_estoque_categoria: categoria
+    p_estoque_categoria: categoria,
+    p_fatores_operacionais: inspecao.fatores_operacionais?.length ? inspecao.fatores_operacionais : null,
+    p_fatores_sinalizacao: inspecao.fatores_sinalizacao?.length ? inspecao.fatores_sinalizacao : null
   })
   if (error) throw error
 }

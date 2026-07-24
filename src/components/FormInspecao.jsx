@@ -1,5 +1,19 @@
 import { useState } from 'react'
-import { motivosNaoConformidade, textoObservacaoAutomatica, textoTipoDivergente } from '../lib/conformidade'
+import { motivosNaoConformidade, textoObservacaoAutomatica, textoDetalhesFatores, textoTipoDivergente } from '../lib/conformidade'
+
+// Sentinel fixo (não vem do banco) pra opção "Outros" nos fatores — abre um
+// campo de texto livre, tratado igual aos demais fatores no resto do fluxo.
+const OUTROS_ID = '__outros__'
+
+const LABEL_SINALIZACAO_EXIGIDA = { parede: 'Parede', haste: 'Haste' }
+
+// Resolve os ids selecionados (incl. o sentinel de "Outros") pras descrições
+// de fato usadas em Observações e guardadas em local_estado_atual.
+function descricoesFatores(catalogo, idsSelecionados, textoOutro) {
+  return idsSelecionados
+    .map(id => id === OUTROS_ID ? textoOutro.trim() : catalogo.find(f => f.id === id)?.descricao)
+    .filter(Boolean)
+}
 
 function CampoColapsavel({ label, valor, aberto, onTrocar, children }) {
   if (valor && !aberto) {
@@ -21,17 +35,47 @@ function CampoColapsavel({ label, valor, aberto, onTrocar, children }) {
   )
 }
 
+// Lista de chips de fatores (não-operacionalidade ou sinalização, conforme o
+// catálogo passado) + opção "Outros" com campo de texto livre.
+function FatorChips({ label, catalogo, selecionados, textoOutro, onToggle, onTextoOutro }) {
+  return (
+    <div className="mt-2 space-y-2 pl-3 border-l-2 border-red-200">
+      <p className="text-xs text-slate-500 font-medium">{label} <span className="text-sci-red">obrigatório</span></p>
+      {catalogo.map(f => {
+        const sel = selecionados.includes(f.id)
+        return (
+          <button key={f.id} onClick={() => onToggle(f.id)} className="flex items-center gap-2 w-full text-left">
+            <div className={`shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${sel ? 'border-sci-red bg-sci-red' : 'border-slate-300 bg-white'}`}>
+              {sel && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+            </div>
+            <span className="text-sm text-slate-700 flex-1">{f.descricao}</span>
+          </button>
+        )
+      })}
+      <button onClick={() => onToggle(OUTROS_ID)} className="flex items-center gap-2 w-full text-left">
+        <div className={`shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${selecionados.includes(OUTROS_ID) ? 'border-sci-red bg-sci-red' : 'border-slate-300 bg-white'}`}>
+          {selecionados.includes(OUTROS_ID) && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+        </div>
+        <span className="text-sm text-slate-700 flex-1">Outros</span>
+      </button>
+      {selecionados.includes(OUTROS_ID) && (
+        <input type="text" value={textoOutro} onChange={e => onTextoOutro(e.target.value)}
+          placeholder="Descreva o motivo" className="w-full" />
+      )}
+    </div>
+  )
+}
+
 // Bloco de campos por extintor (usado no modo dual-slot)
-function SlotBlock({ label, descricao, tiposExtintor, fatores, anosN3, form, setForm, editando, setEditando, sk }) {
+function SlotBlock({ label, descricao, sinalizacaoExigida, tiposExtintor, fatores, fatoresSinalizacao, anosN3, form, setForm, editando, setEditando, sk }) {
   const tipoKgSel = tiposExtintor.find(t => t.tipo === form[`tipo_${sk}`] && String(t.kg) === String(form[`kg_${sk}`]))
 
   function set(campo, valor) { setForm(f => ({ ...f, [campo]: valor })) }
 
-  function toggleFator(id) {
-    const key = `fatores_nc_${sk}`
+  function toggle(campoLista, id) {
     setForm(f => ({
       ...f,
-      [key]: f[key].includes(id) ? f[key].filter(x => x !== id) : [...f[key], id]
+      [campoLista]: f[campoLista].includes(id) ? f[campoLista].filter(x => x !== id) : [...f[campoLista], id]
     }))
   }
 
@@ -101,20 +145,44 @@ function SlotBlock({ label, descricao, tiposExtintor, fatores, anosN3, form, set
           ))}
         </div>
         {form[`operacional_${sk}`] === false && fatores.length > 0 && (
-          <div className="mt-2 space-y-2 pl-3 border-l-2 border-red-200">
-            <p className="text-xs text-slate-500 font-medium">Fator(es) não operacionais: <span className="text-sci-red">obrigatório</span></p>
-            {fatores.map(f => {
-              const sel = form[`fatores_nc_${sk}`].includes(f.id)
-              return (
-                <button key={f.id} onClick={() => toggleFator(f.id)} className="flex items-center gap-2 w-full text-left">
-                  <div className={`shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${sel ? 'border-sci-red bg-sci-red' : 'border-slate-300 bg-white'}`}>
-                    {sel && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                  </div>
-                  <span className="text-sm text-slate-700 flex-1">{f.descricao}</span>
-                </button>
-              )
-            })}
-          </div>
+          <FatorChips
+            label="Fator(es) não operacionais:"
+            catalogo={fatores}
+            selecionados={form[`fatores_nc_${sk}`]}
+            textoOutro={form[`fator_outro_texto_${sk}`]}
+            onToggle={id => toggle(`fatores_nc_${sk}`, id)}
+            onTextoOutro={texto => set(`fator_outro_texto_${sk}`, texto)}
+          />
+        )}
+      </div>
+
+      {/* Sinalização (por slot — cada extintor pode ter tipo de sinalização exigido diferente) */}
+      <div className="space-y-2">
+        <p className="text-sm text-slate-700">
+          Sinalização está conforme?
+          <span className="block text-xs text-slate-400 font-normal mt-0.5">
+            Verifique placa de sinalização, acesso desobstruído e identificação visível.
+            {sinalizacaoExigida && <> Exigida: <strong>{LABEL_SINALIZACAO_EXIGIDA[sinalizacaoExigida]}</strong>.</>}
+          </span>
+        </p>
+        <div className="flex gap-2">
+          {['Sim', 'Não'].map(v => (
+            <button key={v}
+              onClick={() => set(`sinalizacao_ok_${sk}`, v === 'Sim')}
+              className={`btn-option flex-1 ${form[`sinalizacao_ok_${sk}`] === (v === 'Sim') ? 'selected' : ''}`}>
+              {v}
+            </button>
+          ))}
+        </div>
+        {form[`sinalizacao_ok_${sk}`] === false && fatoresSinalizacao.length > 0 && (
+          <FatorChips
+            label="Fator(es) de sinalização:"
+            catalogo={fatoresSinalizacao}
+            selecionados={form[`fatores_sinalizacao_${sk}`]}
+            textoOutro={form[`fator_sinalizacao_outro_texto_${sk}`]}
+            onToggle={id => toggle(`fatores_sinalizacao_${sk}`, id)}
+            onTextoOutro={texto => set(`fator_sinalizacao_outro_texto_${sk}`, texto)}
+          />
         )}
       </div>
     </div>
@@ -122,20 +190,23 @@ function SlotBlock({ label, descricao, tiposExtintor, fatores, anosN3, form, set
 }
 
 export default function FormInspecao({
-  local, slot, estadoAtual, tiposExtintor, fatores, anosN3, equipes, titulo, onSubmit, bloqueado, textoRegistrar
+  local, slot, estadoAtual, tiposExtintor, fatores, fatoresSinalizacao, anosN3, equipes, titulo, onSubmit, bloqueado, textoRegistrar
 }) {
   const temDoisSlots = local.tem_slot_a && local.tem_slot_b
 
   const [form, setForm] = useState(temDoisSlots ? {
     cap_ext_ok: null,
-    tipo_a: '', kg_a: '', n2_a: '', n3_a: '', operacional_a: null, fatores_nc_a: [],
-    tipo_b: '', kg_b: '', n2_b: '', n3_b: '', operacional_b: null, fatores_nc_b: [],
-    sinalizacao_ok: null, observacoes: '', equipe: ''
+    tipo_a: '', kg_a: '', n2_a: '', n3_a: '', operacional_a: null, fatores_nc_a: [], fator_outro_texto_a: '',
+    sinalizacao_ok_a: null, fatores_sinalizacao_a: [], fator_sinalizacao_outro_texto_a: '',
+    tipo_b: '', kg_b: '', n2_b: '', n3_b: '', operacional_b: null, fatores_nc_b: [], fator_outro_texto_b: '',
+    sinalizacao_ok_b: null, fatores_sinalizacao_b: [], fator_sinalizacao_outro_texto_b: '',
+    observacoes: '', equipe: ''
   } : {
     cap_ext_ok: null,
     extintor_tipo: '', extintor_kg: '', cap_ext_atual: '',
-    validade_nivel2: '', validade_nivel3: '', operacional: null, fatores_nc: [],
-    sinalizacao_ok: null, observacoes: '', equipe: ''
+    validade_nivel2: '', validade_nivel3: '', operacional: null, fatores_nc: [], fator_outro_texto: '',
+    sinalizacao_ok: null, fatores_sinalizacao: [], fator_sinalizacao_outro_texto: '',
+    observacoes: '', equipe: ''
   })
 
   const [editando, setEditando] = useState(temDoisSlots
@@ -146,10 +217,10 @@ export default function FormInspecao({
 
   function set(campo, valor) { setForm(f => ({ ...f, [campo]: valor })) }
 
-  function toggleFator(id) {
+  function toggle(campoLista, id) {
     setForm(f => ({
       ...f,
-      fatores_nc: f.fatores_nc.includes(id) ? f.fatores_nc.filter(x => x !== id) : [...f.fatores_nc, id]
+      [campoLista]: f[campoLista].includes(id) ? f[campoLista].filter(x => x !== id) : [...f[campoLista], id]
     }))
   }
 
@@ -157,12 +228,19 @@ export default function FormInspecao({
   function motivosSlotDual(sk) {
     return motivosNaoConformidade({
       operacional: form[`operacional_${sk}`],
-      fatoresSelecionados: fatores.filter(f => form[`fatores_nc_${sk}`].includes(f.id)).map(f => f.descricao),
-      sinalizacaoOk: form.sinalizacao_ok,
+      sinalizacaoOk: form[`sinalizacao_ok_${sk}`],
       capExtOk: local.planta_cap_ext_exigida ? form.cap_ext_ok : undefined,
       validadeNivel2: form[`n2_${sk}`],
       validadeNivel3: form[`n3_${sk}`]
     })
+  }
+
+  function fatoresOperacionaisSlotDual(sk) {
+    return descricoesFatores(fatores, form[`fatores_nc_${sk}`], form[`fator_outro_texto_${sk}`])
+  }
+
+  function fatoresSinalizacaoSlotDual(sk) {
+    return descricoesFatores(fatoresSinalizacao, form[`fatores_sinalizacao_${sk}`], form[`fator_sinalizacao_outro_texto_${sk}`])
   }
 
   // Alerta de tipo divergente — não é motivo de não conformidade, só entra
@@ -171,21 +249,36 @@ export default function FormInspecao({
     return textoTipoDivergente(form[`tipo_${sk}`], local.planta_tipo_exigido)
   }
 
+  function textoAutoSlotDual(sk) {
+    return [
+      textoObservacaoAutomatica(motivosSlotDual(sk)),
+      textoDetalhesFatores({ fatoresOperacionais: fatoresOperacionaisSlotDual(sk), fatoresSinalizacao: fatoresSinalizacaoSlotDual(sk) }),
+      textoTipoSlotDual(sk)
+    ].filter(Boolean).join(' ')
+  }
+
   // ── Submit dual-slot ──
   async function handleSubmitDual() {
     if (!form.equipe) return alert('Selecione a equipe.')
     if (local.planta_cap_ext_exigida && form.cap_ext_ok === null) return alert('Informe a Capacidade Extintora conjunta.')
     if (form.operacional_a === null) return alert('Informe o resultado da inspeção do Extintor A.')
     if (form.operacional_a === false && fatores.length > 0 && form.fatores_nc_a.length === 0) return alert('Selecione ao menos um fator de não conformidade do Extintor A.')
+    if (form.operacional_a === false && form.fatores_nc_a.includes(OUTROS_ID) && !form.fator_outro_texto_a.trim()) return alert('Descreva o motivo em "Outros" do Extintor A.')
     if (form.operacional_b === null) return alert('Informe o resultado da inspeção do Extintor B.')
     if (form.operacional_b === false && fatores.length > 0 && form.fatores_nc_b.length === 0) return alert('Selecione ao menos um fator de não conformidade do Extintor B.')
-    if (form.sinalizacao_ok === null) return alert('Informe a situação da sinalização.')
+    if (form.operacional_b === false && form.fatores_nc_b.includes(OUTROS_ID) && !form.fator_outro_texto_b.trim()) return alert('Descreva o motivo em "Outros" do Extintor B.')
+    if (form.sinalizacao_ok_a === null) return alert('Informe a situação da sinalização do Extintor A.')
+    if (form.sinalizacao_ok_a === false && fatoresSinalizacao.length > 0 && form.fatores_sinalizacao_a.length === 0) return alert('Selecione ao menos um fator de sinalização do Extintor A.')
+    if (form.sinalizacao_ok_a === false && form.fatores_sinalizacao_a.includes(OUTROS_ID) && !form.fator_sinalizacao_outro_texto_a.trim()) return alert('Descreva o motivo em "Outros" da sinalização do Extintor A.')
+    if (form.sinalizacao_ok_b === null) return alert('Informe a situação da sinalização do Extintor B.')
+    if (form.sinalizacao_ok_b === false && fatoresSinalizacao.length > 0 && form.fatores_sinalizacao_b.length === 0) return alert('Selecione ao menos um fator de sinalização do Extintor B.')
+    if (form.sinalizacao_ok_b === false && form.fatores_sinalizacao_b.includes(OUTROS_ID) && !form.fator_sinalizacao_outro_texto_b.trim()) return alert('Descreva o motivo em "Outros" da sinalização do Extintor B.')
 
     const motivosA = motivosSlotDual('a')
     const motivosB = motivosSlotDual('b')
     const extra = form.observacoes.trim()
 
-    const shared = { sinalizacao_ok: form.sinalizacao_ok, equipe: form.equipe, cap_ext_ok: form.cap_ext_ok }
+    const shared = { equipe: form.equipe, cap_ext_ok: form.cap_ext_ok }
 
     setEnviando(true)
     try {
@@ -195,16 +288,22 @@ export default function FormInspecao({
           extintor_tipo: form.tipo_a, extintor_kg: form.kg_a,
           validade_nivel2: form.n2_a, validade_nivel3: form.n3_a,
           operacional: form.operacional_a, fatores_nc: form.fatores_nc_a,
+          sinalizacao_ok: form.sinalizacao_ok_a,
+          fatores_operacionais: fatoresOperacionaisSlotDual('a'),
+          fatores_sinalizacao: fatoresSinalizacaoSlotDual('a'),
           motivo_nao_conformidade: motivosA.length ? motivosA.join(', ') : null,
-          observacoes: [textoObservacaoAutomatica(motivosA), textoTipoSlotDual('a'), extra].filter(Boolean).join(' '),
+          observacoes: [textoObservacaoAutomatica(motivosA), textoDetalhesFatores({ fatoresOperacionais: fatoresOperacionaisSlotDual('a'), fatoresSinalizacao: fatoresSinalizacaoSlotDual('a') }), textoTipoSlotDual('a'), extra].filter(Boolean).join(' '),
           reserva_empresa: false, ...shared
         },
         slotB: {
           extintor_tipo: form.tipo_b, extintor_kg: form.kg_b,
           validade_nivel2: form.n2_b, validade_nivel3: form.n3_b,
           operacional: form.operacional_b, fatores_nc: form.fatores_nc_b,
+          sinalizacao_ok: form.sinalizacao_ok_b,
+          fatores_operacionais: fatoresOperacionaisSlotDual('b'),
+          fatores_sinalizacao: fatoresSinalizacaoSlotDual('b'),
           motivo_nao_conformidade: motivosB.length ? motivosB.join(', ') : null,
-          observacoes: [textoObservacaoAutomatica(motivosB), textoTipoSlotDual('b'), extra].filter(Boolean).join(' '),
+          observacoes: [textoObservacaoAutomatica(motivosB), textoDetalhesFatores({ fatoresOperacionais: fatoresOperacionaisSlotDual('b'), fatoresSinalizacao: fatoresSinalizacaoSlotDual('b') }), textoTipoSlotDual('b'), extra].filter(Boolean).join(' '),
           reserva_empresa: false, ...shared
         }
       })
@@ -221,23 +320,39 @@ export default function FormInspecao({
     if (local.planta_cap_ext_exigida && form.cap_ext_ok === null) return alert('Informe a Capacidade Extintora.')
     if (form.operacional === null) return alert('Informe o resultado da inspeção.')
     if (form.operacional === false && fatores.length > 0 && form.fatores_nc.length === 0) return alert('Selecione ao menos um fator de não conformidade.')
+    if (form.operacional === false && form.fatores_nc.includes(OUTROS_ID) && !form.fator_outro_texto.trim()) return alert('Descreva o motivo em "Outros".')
     if (form.sinalizacao_ok === null) return alert('Informe a situação da sinalização.')
+    if (form.sinalizacao_ok === false && fatoresSinalizacao.length > 0 && form.fatores_sinalizacao.length === 0) return alert('Selecione ao menos um fator de sinalização.')
+    if (form.sinalizacao_ok === false && form.fatores_sinalizacao.includes(OUTROS_ID) && !form.fator_sinalizacao_outro_texto.trim()) return alert('Descreva o motivo em "Outros" da sinalização.')
 
     const motivos = motivosNaoConformidade({
       operacional: form.operacional,
-      fatoresSelecionados: fatores.filter(f => form.fatores_nc.includes(f.id)).map(f => f.descricao),
       sinalizacaoOk: form.sinalizacao_ok,
       capExtOk: local.planta_cap_ext_exigida ? form.cap_ext_ok : undefined,
       validadeNivel2: form.validade_nivel2,
       validadeNivel3: form.validade_nivel3
     })
+    const fatoresOperacionaisSelecionados = descricoesFatores(fatores, form.fatores_nc, form.fator_outro_texto)
+    const fatoresSinalizacaoSelecionados = descricoesFatores(fatoresSinalizacao, form.fatores_sinalizacao, form.fator_sinalizacao_outro_texto)
     const motivo_nao_conformidade = motivos.length > 0 ? motivos.join(', ') : null
     const textoTipo = textoTipoDivergente(form.extintor_tipo, local.planta_tipo_exigido)
-    const observacoes = [textoObservacaoAutomatica(motivos), textoTipo, form.observacoes.trim()].filter(Boolean).join(' ')
+    const observacoes = [
+      textoObservacaoAutomatica(motivos),
+      textoDetalhesFatores({ fatoresOperacionais: fatoresOperacionaisSelecionados, fatoresSinalizacao: fatoresSinalizacaoSelecionados }),
+      textoTipo,
+      form.observacoes.trim()
+    ].filter(Boolean).join(' ')
 
     setEnviando(true)
     try {
-      await onSubmit({ ...form, observacoes, reserva_empresa: estadoAtual?.reserva_empresa ?? false, motivo_nao_conformidade })
+      await onSubmit({
+        ...form,
+        observacoes,
+        reserva_empresa: estadoAtual?.reserva_empresa ?? false,
+        motivo_nao_conformidade,
+        fatores_operacionais: fatoresOperacionaisSelecionados,
+        fatores_sinalizacao: fatoresSinalizacaoSelecionados
+      })
     } catch (e) {
       alert('Erro ao registrar: ' + e.message)
     } finally {
@@ -253,8 +368,8 @@ export default function FormInspecao({
   // DUAL-SLOT FORM
   // ════════════════════════════════════════
   if (temDoisSlots) {
-    const textoAutoA = [textoObservacaoAutomatica(motivosSlotDual('a')), textoTipoSlotDual('a')].filter(Boolean).join(' ')
-    const textoAutoB = [textoObservacaoAutomatica(motivosSlotDual('b')), textoTipoSlotDual('b')].filter(Boolean).join(' ')
+    const textoAutoA = textoAutoSlotDual('a')
+    const textoAutoB = textoAutoSlotDual('b')
 
     return (
       <div className="card space-y-5">
@@ -291,31 +406,14 @@ export default function FormInspecao({
         )}
 
         {/* Bloco Extintor A */}
-        <SlotBlock label="A" descricao={local.descricao_slot_a} tiposExtintor={tiposExtintor} fatores={fatores} anosN3={anosN3}
+        <SlotBlock label="A" descricao={local.descricao_slot_a} sinalizacaoExigida={local.sinalizacao_exigida_a}
+          tiposExtintor={tiposExtintor} fatores={fatores} fatoresSinalizacao={fatoresSinalizacao} anosN3={anosN3}
           form={form} setForm={setForm} editando={editando} setEditando={setEditando} sk="a" />
 
         {/* Bloco Extintor B */}
-        <SlotBlock label="B" descricao={local.descricao_slot_b} tiposExtintor={tiposExtintor} fatores={fatores} anosN3={anosN3}
+        <SlotBlock label="B" descricao={local.descricao_slot_b} sinalizacaoExigida={local.sinalizacao_exigida_b}
+          tiposExtintor={tiposExtintor} fatores={fatores} fatoresSinalizacao={fatoresSinalizacao} anosN3={anosN3}
           form={form} setForm={setForm} editando={editando} setEditando={setEditando} sk="b" />
-
-        {/* 6. Sinalização (compartilhada) */}
-        <div className="space-y-2">
-          <p className="text-sm text-slate-700">
-            6. Sinalização está conforme?
-            <span className="block text-xs text-slate-400 font-normal mt-0.5">
-              Verifique placa de sinalização, acesso desobstruído e identificação visível.
-            </span>
-          </p>
-          <div className="flex gap-2">
-            {['Sim', 'Não'].map(v => (
-              <button key={v}
-                onClick={() => set('sinalizacao_ok', v === 'Sim')}
-                className={`btn-option flex-1 ${form.sinalizacao_ok === (v === 'Sim') ? 'selected' : ''}`}>
-                {v}
-              </button>
-            ))}
-          </div>
-        </div>
 
         {/* 7. Observações */}
         <div className="space-y-2">
@@ -373,15 +471,17 @@ export default function FormInspecao({
   // ════════════════════════════════════════
   // SINGLE-SLOT FORM (original)
   // ════════════════════════════════════════
+  const fatoresOperacionaisAtuais = descricoesFatores(fatores, form.fatores_nc, form.fator_outro_texto)
+  const fatoresSinalizacaoAtuais = descricoesFatores(fatoresSinalizacao, form.fatores_sinalizacao, form.fator_sinalizacao_outro_texto)
   const textoAuto = [
     textoObservacaoAutomatica(motivosNaoConformidade({
       operacional: form.operacional,
-      fatoresSelecionados: fatores.filter(f => form.fatores_nc.includes(f.id)).map(f => f.descricao),
       sinalizacaoOk: form.sinalizacao_ok,
       capExtOk: local.planta_cap_ext_exigida ? form.cap_ext_ok : undefined,
       validadeNivel2: form.validade_nivel2,
       validadeNivel3: form.validade_nivel3
     })),
+    textoDetalhesFatores({ fatoresOperacionais: fatoresOperacionaisAtuais, fatoresSinalizacao: fatoresSinalizacaoAtuais }),
     textoTipoDivergente(form.extintor_tipo, local.planta_tipo_exigido)
   ].filter(Boolean).join(' ')
 
@@ -472,20 +572,14 @@ export default function FormInspecao({
           ))}
         </div>
         {form.operacional === false && fatores.length > 0 && (
-          <div className="mt-2 space-y-2 pl-3 border-l-2 border-red-200">
-            <p className="text-xs text-slate-500 font-medium">Fator(es) não operacionais: <span className="text-sci-red">obrigatório</span></p>
-            {fatores.map(f => {
-              const selecionado = form.fatores_nc.includes(f.id)
-              return (
-                <button key={f.id} onClick={() => toggleFator(f.id)} className="flex items-center gap-2 w-full text-left">
-                  <div className={`shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${selecionado ? 'border-sci-red bg-sci-red' : 'border-slate-300 bg-white'}`}>
-                    {selecionado && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                  </div>
-                  <span className="text-sm text-slate-700 flex-1">{f.descricao}</span>
-                </button>
-              )
-            })}
-          </div>
+          <FatorChips
+            label="Fator(es) não operacionais:"
+            catalogo={fatores}
+            selecionados={form.fatores_nc}
+            textoOutro={form.fator_outro_texto}
+            onToggle={id => toggle('fatores_nc', id)}
+            onTextoOutro={texto => set('fator_outro_texto', texto)}
+          />
         )}
       </div>
 
@@ -495,6 +589,7 @@ export default function FormInspecao({
           6. Sinalização está conforme?
           <span className="block text-xs text-slate-400 font-normal mt-0.5">
             Verifique placa de sinalização, acesso desobstruído e identificação visível.
+            {local.sinalizacao_exigida_a && <> Exigida: <strong>{LABEL_SINALIZACAO_EXIGIDA[local.sinalizacao_exigida_a]}</strong>.</>}
           </span>
         </p>
         <div className="flex gap-2">
@@ -506,6 +601,16 @@ export default function FormInspecao({
             </button>
           ))}
         </div>
+        {form.sinalizacao_ok === false && fatoresSinalizacao.length > 0 && (
+          <FatorChips
+            label="Fator(es) de sinalização:"
+            catalogo={fatoresSinalizacao}
+            selecionados={form.fatores_sinalizacao}
+            textoOutro={form.fator_sinalizacao_outro_texto}
+            onToggle={id => toggle('fatores_sinalizacao', id)}
+            onTextoOutro={texto => set('fator_sinalizacao_outro_texto', texto)}
+          />
+        )}
       </div>
 
       {/* 7. Observações */}

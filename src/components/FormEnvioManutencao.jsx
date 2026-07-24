@@ -2,7 +2,7 @@ import { useState } from 'react'
 import FormInspecao from './FormInspecao'
 
 export default function FormEnvioManutencao({
-  local, slot, tiposExtintor, fatores, anosN3, equipes, onSubmit, onCancelar, bloqueado
+  local, slot, tiposExtintor, fatores, fatoresSinalizacao, anosN3, equipes, onSubmit, onCancelar, bloqueado
 }) {
   const [etapa, setEtapa] = useState(1) // 1 = dados do envio, 2 = inspeção do substituto
   const [envio, setEnvio] = useState({
@@ -59,6 +59,7 @@ export default function FormEnvioManutencao({
           estadoAtual={null}
           tiposExtintor={tiposExtintor}
           fatores={fatores}
+          fatoresSinalizacao={fatoresSinalizacao}
           anosN3={anosN3}
           equipes={equipes}
           titulo={textoSubstituto}

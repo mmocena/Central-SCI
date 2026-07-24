@@ -441,10 +441,15 @@ export default function Relatorios() {
   })
   // "Não operacional" não vira uma linha única — cada fator selecionado na
   // inspeção (ex: "Lacre violado", "Manômetro fora da faixa verde") é
-  // listado e contado separadamente.
+  // listado e contado separadamente. Fonte estruturada (fatores_operacionais)
+  // pras inspeções novas; fallback pro parsing de motivo_nao_conformidade
+  // só pra inspeções antigas, registradas antes dessa coluna existir.
   const contagemFatoresOperacionais = {}
   linhasNaoConforme.forEach(l => {
-    fatoresOperacionaisDoMotivo(l.estado.motivo_nao_conformidade).forEach(fator => {
+    const fatoresDaLinha = l.estado.fatores_operacionais?.length
+      ? l.estado.fatores_operacionais
+      : fatoresOperacionaisDoMotivo(l.estado.motivo_nao_conformidade)
+    fatoresDaLinha.forEach(fator => {
       contagemFatoresOperacionais[fator] = (contagemFatoresOperacionais[fator] || 0) + 1
     })
   })
