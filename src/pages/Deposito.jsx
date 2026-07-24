@@ -562,7 +562,6 @@ function Stepper({ valor, cor, onDelta }) {
 
 function TabelaEstoque({ titulo, indicador, linhas, tiposExtintor, vazio, gerenciando, categoria, onAjustar, onExcluir }) {
   const total = linhas.reduce((acc, l) => ({ oper: acc.oper + l.oper, naoOper: acc.naoOper + l.naoOper }), { oper: 0, naoOper: 0 })
-  const linhasVisiveis = gerenciando ? linhas : linhas.filter(l => l.oper > 0 || l.naoOper > 0)
   const colunas = gerenciando
     ? 'grid grid-cols-[1fr,4.5rem,4.5rem,2.5rem,1.25rem] gap-1 items-center'
     : 'grid grid-cols-[1fr,3.5rem,3.5rem,3.5rem] gap-1 items-center'
@@ -572,7 +571,7 @@ function TabelaEstoque({ titulo, indicador, linhas, tiposExtintor, vazio, gerenc
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1 flex items-center gap-2">
         {indicador}{titulo}
       </p>
-      {linhasVisiveis.length === 0 ? (
+      {linhas.length === 0 ? (
         <div className="card text-center py-4 text-slate-400 text-sm">{vazio}</div>
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -584,7 +583,7 @@ function TabelaEstoque({ titulo, indicador, linhas, tiposExtintor, vazio, gerenc
             {gerenciando && <span />}
           </div>
           <div className="divide-y divide-slate-100">
-            {linhasVisiveis.map(l => (
+            {linhas.map(l => (
               <div key={`${l.tipo}-${l.kg}`} className={`${colunas} px-4 py-2.5`}>
                 <span className="text-sm text-slate-600 truncate">{l.tipo} {l.kg}{unidadeDoTipo(l.tipo, tiposExtintor)}</span>
                 {gerenciando ? (
@@ -621,7 +620,6 @@ function TabelaEstoque({ titulo, indicador, linhas, tiposExtintor, vazio, gerenc
 // nome livre).
 function TabelaSimples({ titulo, indicador, linhas, tiposExtintor, vazio, gerenciando, categoria, onAjustar, onExcluir, comKg = true }) {
   const total = linhas.reduce((s, l) => s + l.qtd, 0)
-  const linhasVisiveis = gerenciando ? linhas : linhas.filter(l => l.qtd > 0)
   const colunas = gerenciando
     ? 'grid grid-cols-[1fr,4.5rem,1.25rem] gap-1 items-center'
     : 'grid grid-cols-[1fr,3.5rem] gap-1 items-center'
@@ -631,7 +629,7 @@ function TabelaSimples({ titulo, indicador, linhas, tiposExtintor, vazio, gerenc
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1 flex items-center gap-2">
         {indicador}{titulo}
       </p>
-      {linhasVisiveis.length === 0 ? (
+      {linhas.length === 0 ? (
         <div className="card text-center py-4 text-slate-400 text-sm">{vazio}</div>
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -641,7 +639,7 @@ function TabelaSimples({ titulo, indicador, linhas, tiposExtintor, vazio, gerenc
             {gerenciando && <span />}
           </div>
           <div className="divide-y divide-slate-100">
-            {linhasVisiveis.map(l => (
+            {linhas.map(l => (
               <div key={`${l.tipo}-${l.kg}`} className={`${colunas} px-4 py-2.5`}>
                 <span className="text-sm text-slate-600 truncate">{l.tipo}{comKg ? ` ${l.kg}${unidadeDoTipo(l.tipo, tiposExtintor)}` : ''}</span>
                 {gerenciando ? (
