@@ -249,7 +249,7 @@ export async function fetchLocaisComReserva() {
 
 // registrar_envio_estoque (RPC): checa o lote e insere as N unidades na mesma
 // transação, sem janela entre o "já existe?" e o insert.
-async function _registrarEnvioEstoque({ tipo, kg, nivel, quantidade, responsavel, equipe, clientOpId }) {
+async function _registrarEnvioEstoque({ tipo, kg, nivel, quantidade, responsavel, equipe, categoria, clientOpId }) {
   const { error } = await supabase.rpc('registrar_envio_estoque', {
     p_tipo: tipo,
     p_kg: parseFloat(kg),
@@ -257,7 +257,8 @@ async function _registrarEnvioEstoque({ tipo, kg, nivel, quantidade, responsavel
     p_quantidade: quantidade,
     p_responsavel: responsavel,
     p_equipe: equipe,
-    p_lote_id: clientOpId
+    p_lote_id: clientOpId,
+    p_categoria: categoria
   })
   if (error) throw error
 }
@@ -374,17 +375,21 @@ export async function verificarSenhaAdmin(senha) {
 }
 
 export async function fetchLocaisComVencimento() {
-  const ano = String(new Date().getFullYear())
+  // Vencidos (de qualquer ano) ou a vencer até o fim do ano vigente — datas
+  // em formato ISO (YYYY-MM-DD) comparam certo como string. RESERVA fica de
+  // fora: não são extintores nossos, são da empresa que faz a manutenção.
+  const fimAnoAtual = `${new Date().getFullYear()}-12-31`
 
   const { data: estados, error: e1 } = await supabase
     .from('local_estado_atual')
-    .select('local_id, slot, validade_nivel2, validade_nivel3')
+    .select('local_id, slot, validade_nivel2, validade_nivel3, reserva_empresa')
 
   if (e1) throw e1
 
   const comVencimento = (estados || []).filter(e =>
-    (e.validade_nivel2 && e.validade_nivel2.startsWith(ano)) ||
-    (e.validade_nivel3 && e.validade_nivel3.startsWith(ano))
+    !e.reserva_empresa &&
+    ((e.validade_nivel2 && e.validade_nivel2 <= fimAnoAtual) ||
+     (e.validade_nivel3 && e.validade_nivel3 <= fimAnoAtual))
   )
 
   if (!comVencimento.length) return []
@@ -400,11 +405,11 @@ export async function fetchLocaisComVencimento() {
 
   if (e2) throw e2
 
-  return (locais || []).map(local => {
+  const comDados = (locais || []).map(local => {
     const slotsDados = comVencimento.filter(e => e.local_id === local.id)
     const vencimentos = slotsDados.map(e => {
-      const n3ok = e.validade_nivel3?.startsWith(ano)
-      const n2ok = e.validade_nivel2?.startsWith(ano)
+      const n3ok = e.validade_nivel3 && e.validade_nivel3 <= fimAnoAtual
+      const n2ok = e.validade_nivel2 && e.validade_nivel2 <= fimAnoAtual
       return {
         slot: e.slot,
         nivel: n3ok ? 3 : 2,
@@ -412,6 +417,14 @@ export async function fetchLocaisComVencimento() {
       }
     })
     return { ...local, vencimentos }
+  })
+
+  // Do mais vencido pro mais distante de vencer — cada local ordenado pela
+  // validade mais antiga entre seus vencimentos.
+  return comDados.sort((a, b) => {
+    const minA = Math.min(...a.vencimentos.map(v => new Date(v.validade)))
+    const minB = Math.min(...b.vencimentos.map(v => new Date(v.validade)))
+    return minA - minB
   })
 }
 

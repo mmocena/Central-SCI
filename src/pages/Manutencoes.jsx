@@ -52,10 +52,12 @@ export default function Manutencoes() {
   const [vencimentos, setVencimentos] = useState([])
   const [tiposExtintor, setTiposExtintor] = useState([])
   const [estoqueReserva, setEstoqueReserva] = useState([])
+  const [estoqueSCI, setEstoqueSCI] = useState([])
   const [loading, setLoading] = useState(true)
-  const [formEstoque, setFormEstoque] = useState({ tipo: '', kg: '', nivel: '', quantidade: 1, equipe: '' })
+  const [formEstoque, setFormEstoque] = useState({ categoria: 'SCI', tipo: '', kg: '', nivel: '', quantidade: 1, equipe: '' })
   const [enviandoEstoque, setEnviandoEstoque] = useState(false)
   const [estoquePainel, setEstoquePainel] = useState(false)
+  const [pontosPainel, setPontosPainel] = useState(false)
   const [selecionados, setSelecionados] = useState(new Set())
   const [expandidos, setExpandidos] = useState(new Set())
   const [equipe, setEquipe] = useState('')
@@ -86,6 +88,18 @@ export default function Manutencoes() {
     setVencimentos(vencData)
     setTiposExtintor(tiposData)
     setEstoqueReserva((estoqueData || []).filter(e => e.categoria === 'RESERVA'))
+    // Total por tipo/kg (operacional + não operacional somados) — pra Envio
+    // do Estoque, que manda pra manutenção tanto quem tá prestes a vencer
+    // (operacional) quanto quem já tá quebrado (não operacional).
+    const totaisSCIporTipoKg = (estoqueData || [])
+      .filter(e => e.categoria === 'SCI')
+      .reduce((acc, e) => {
+        const chave = `${e.tipo}|${e.kg}`
+        if (!acc[chave]) acc[chave] = { tipo: e.tipo, kg: e.kg, quantidade: 0 }
+        acc[chave].quantidade += e.quantidade
+        return acc
+      }, {})
+    setEstoqueSCI(Object.values(totaisSCIporTipoKg).filter(e => e.quantidade > 0))
     setLoading(false)
   }, [])
 
@@ -154,7 +168,7 @@ export default function Manutencoes() {
 
   const ABAS = [
     { id: 'recebimento', label: 'Em manutenção', badge: ordens.length },
-    { id: 'envio', label: 'Envio', badge: vencimentos.length },
+    { id: 'envio', label: 'Enviar', badge: vencimentos.length },
     { id: 'substituicao', label: 'Substituir RESERVAS', badge: reservas.length },
   ]
 
@@ -191,7 +205,7 @@ export default function Manutencoes() {
       {abaAtiva === 'envio' && <section className="space-y-3">
 
         <CardComoUsar
-          descricao="Organize o envio de extintores para manutenção. Liste os pontos com validade vencendo no ano vigente e saiba exatamente quais substitutos separar antes de ir a campo."
+          descricao="Organize o envio de extintores para manutenção. Marque os pontos que deseja enviar para manutenção e saiba exatamente quais substitutos separar antes de ir a campo."
           aberto={comoUsarEnvio}
           onToggle={() => setComoUsarEnvio(v => !v)}
           texto="Marque os pontos que pretende atender nesta saída. O sistema agrupa automaticamente por tipo e capacidade exigidos na planta. Clique em 'Registrar envio' em cada ponto para registrar o extintor que saiu e o substituto que ficou no local."
@@ -222,89 +236,111 @@ export default function Manutencoes() {
           }, {})
 
           return (
-            <>
-              {edificacoesEnvio.length > 1 && (
-                <div className="flex gap-1.5 flex-wrap">
-                  <button
-                    onClick={() => setFiltroEdifEnvio('')}
-                    className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${!filtroEdifEnvio ? 'bg-sci-red text-white border-sci-red' : 'bg-white text-slate-500 border-slate-200'}`}
-                  >
-                    Todas
-                  </button>
-                  {edificacoesEnvio.map(e => (
-                    <button
-                      key={e}
-                      onClick={() => setFiltroEdifEnvio(e === filtroEdifEnvio ? '' : e)}
-                      className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${filtroEdifEnvio === e ? 'bg-sci-red text-white border-sci-red' : 'bg-white text-slate-500 border-slate-200'}`}
-                    >
-                      {e}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {selecionadosEnvioList.length > 0 && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-1.5">
-                  <p className="text-xs font-semibold text-blue-700">
-                    Exigência da planta — {selecionadosEnvioList.length} ponto{selecionadosEnvioList.length > 1 ? 's' : ''} selecionado{selecionadosEnvioList.length > 1 ? 's' : ''}:
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <button
+                onClick={() => setPontosPainel(v => !v)}
+                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-sci-text">Pontos com validade vencida ou vencendo</p>
+                  <p className="text-xs text-slate-400">
+                    {vencimentos.length} ponto{vencimentos.length > 1 ? 's' : ''}
+                    {selecionadosEnvio.size > 0 ? ` · ${selecionadosEnvio.size} selecionado${selecionadosEnvio.size > 1 ? 's' : ''}` : ''}
                   </p>
-                  {Object.entries(resumoEnvio).map(([chave, qtd]) => (
-                    <div key={chave} className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-blue-800">{chave}</span>
-                      <span className="text-sm font-bold text-blue-900">× {qtd}</span>
+                </div>
+                <span className="text-slate-400 text-sm">{pontosPainel ? '▲' : '▼'}</span>
+              </button>
+
+              {pontosPainel && (
+                <div className="border-t border-slate-100 p-4 space-y-3">
+                  {edificacoesEnvio.length > 1 && (
+                    <div className="flex gap-1.5 flex-wrap">
+                      <button
+                        onClick={() => setFiltroEdifEnvio('')}
+                        className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${!filtroEdifEnvio ? 'bg-sci-red text-white border-sci-red' : 'bg-white text-slate-500 border-slate-200'}`}
+                      >
+                        Todas
+                      </button>
+                      {edificacoesEnvio.map(e => (
+                        <button
+                          key={e}
+                          onClick={() => setFiltroEdifEnvio(e === filtroEdifEnvio ? '' : e)}
+                          className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${filtroEdifEnvio === e ? 'bg-sci-red text-white border-sci-red' : 'bg-white text-slate-500 border-slate-200'}`}
+                        >
+                          {e}
+                        </button>
+                      ))}
                     </div>
-                  ))}
+                  )}
+
+                  {selecionadosEnvioList.length > 0 && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-1.5">
+                      <p className="text-xs font-semibold text-blue-700">
+                        Separar antes de ir a campo (SCI ou RESERVA) — {selecionadosEnvioList.length} ponto{selecionadosEnvioList.length > 1 ? 's' : ''} selecionado{selecionadosEnvioList.length > 1 ? 's' : ''}:
+                      </p>
+                      {Object.entries(resumoEnvio).map(([chave, qtd]) => (
+                        <div key={chave} className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-blue-800">{chave}</span>
+                          <span className="text-sm font-bold text-blue-900">× {qtd}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    {vencFiltrados.map(local => {
+                      const sel = selecionadosEnvio.has(local.id)
+                      const plantaLabel = [local.planta_tipo_exigido, local.planta_cap_ext_exigida].filter(Boolean).join(' ')
+                      // Highest priority vencimento for display (N3 > N2)
+                      const venc = local.vencimentos?.sort((a, b) => b.nivel - a.nivel)[0]
+                      return (
+                        <div
+                          key={local.id}
+                          className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${sel ? 'border-sci-red ring-1 ring-red-100' : 'border-slate-200'}`}
+                        >
+                          <div className="flex">
+                            <button
+                              onClick={() => toggleEnvio(local.id)}
+                              className="flex items-center justify-center px-3 shrink-0"
+                            >
+                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${sel ? 'bg-sci-red border-sci-red' : 'border-slate-300 bg-white'}`}>
+                                {sel && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                              </div>
+                            </button>
+
+                            <div className="bg-sci-red flex items-center justify-center min-w-[4rem] px-2 shrink-0 self-stretch">
+                              <span className="text-white font-bold text-base leading-none">{String(local.numero).padStart(2, '0')}</span>
+                            </div>
+
+                            <div className="flex-1 min-w-0 p-3 space-y-0.5">
+                              <p className="text-sm font-medium text-sci-text">{local.edificacao}</p>
+                              {local.descricao && <p className="text-xs text-slate-400">{local.descricao}</p>}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {plantaLabel && (
+                                  <span className="text-xs text-slate-500">Planta: <span className="font-semibold text-slate-700">{plantaLabel}</span></span>
+                                )}
+                                {venc && (
+                                  <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                                    {formatarValidade(venc.validade, venc.nivel)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => { setLocalAberto(local); setEnvioPreAberto(true) }}
+                            className="w-full flex items-center justify-center py-2.5 text-sci-red text-xs font-semibold border-t border-slate-100 bg-red-50/50"
+                          >
+                            Registrar envio →
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
-
-              {vencFiltrados.map(local => {
-                const sel = selecionadosEnvio.has(local.id)
-                const plantaLabel = [local.planta_tipo_exigido, local.planta_cap_ext_exigida].filter(Boolean).join(' ')
-                // Highest priority vencimento for display (N3 > N2)
-                const venc = local.vencimentos?.sort((a, b) => b.nivel - a.nivel)[0]
-                return (
-                  <div
-                    key={local.id}
-                    className={`bg-white rounded-2xl border shadow-sm overflow-hidden flex transition-all ${sel ? 'border-sci-red ring-1 ring-red-100' : 'border-slate-200'}`}
-                  >
-                    <button
-                      onClick={() => toggleEnvio(local.id)}
-                      className="flex items-center justify-center px-3 shrink-0"
-                    >
-                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${sel ? 'bg-sci-red border-sci-red' : 'border-slate-300 bg-white'}`}>
-                        {sel && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                      </div>
-                    </button>
-
-                    <div className="bg-sci-red flex items-center justify-center min-w-[4rem] px-2 shrink-0 self-stretch">
-                      <span className="text-white font-bold text-base leading-none">{String(local.numero).padStart(2, '0')}</span>
-                    </div>
-
-                    <div className="flex-1 min-w-0 p-3 space-y-0.5">
-                      <p className="text-sm font-medium text-sci-text">{local.edificacao}</p>
-                      {local.descricao && <p className="text-xs text-slate-400">{local.descricao}</p>}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {plantaLabel && (
-                          <span className="text-xs text-slate-500">Planta: <span className="font-semibold text-slate-700">{plantaLabel}</span></span>
-                        )}
-                        {venc && (
-                          <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                            {formatarValidade(venc.validade, venc.nivel)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => { setLocalAberto(local); setEnvioPreAberto(true) }}
-                      className="flex items-center pr-4 pl-2 text-sci-red text-xs font-semibold shrink-0"
-                    >
-                      Registrar envio →
-                    </button>
-                  </div>
-                )
-              })}
-            </>
+            </div>
           )
         })()}
 
@@ -321,108 +357,127 @@ export default function Manutencoes() {
             <span className="text-slate-400 text-sm">{estoquePainel ? '▲' : '▼'}</span>
           </button>
 
-          {estoquePainel && (
-            <div className="border-t border-slate-100 p-4 space-y-4">
-              {/* Tipo/kg */}
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-slate-600">Tipo / kg</p>
-                <div className="flex flex-wrap gap-2">
-                  {tiposExtintor.map(t => {
-                    const sel = formEstoque.tipo === t.tipo && String(formEstoque.kg) === String(t.kg)
-                    return (
+          {estoquePainel && (() => {
+            // Só SCI — RESERVA é da empresa que faz a manutenção, não são
+            // extintores nossos pra mandar consertar. Quantidade é o total
+            // (operacional + não operacional somados) de cada tipo/kg.
+            const itemSelecionado = estoqueSCI.find(e => e.tipo === formEstoque.tipo && String(e.kg) === String(formEstoque.kg))
+            const maxQuantidade = itemSelecionado?.quantidade || 1
+
+            return (
+              <div className="border-t border-slate-100 p-4 space-y-4">
+                {/* Tipo/kg — só o que existe de verdade no depósito (SCI),
+                    com a quantidade total disponível à vista, pra não deixar
+                    enviar mais do que realmente tem. */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-slate-600">Tipo / kg (SCI)</p>
+                  {estoqueSCI.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">Nenhum item em estoque.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {estoqueSCI.map(e => {
+                        const sel = formEstoque.tipo === e.tipo && String(formEstoque.kg) === String(e.kg)
+                        return (
+                          <button
+                            key={`${e.tipo}-${e.kg}`}
+                            onClick={() => setFormEstoque(f => ({ ...f, tipo: e.tipo, kg: e.kg, quantidade: 1 }))}
+                            className={`btn-option text-xs ${sel ? 'selected' : ''}`}
+                          >
+                            {e.tipo} {e.kg}{unidadeDoTipo(e.tipo, tiposExtintor)} — {e.quantidade} disponível{e.quantidade > 1 ? 'is' : ''}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Nível */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-slate-600">Nível de manutenção</p>
+                  <div className="flex gap-2">
+                    {['2', '3'].map(n => (
                       <button
-                        key={t.id}
-                        onClick={() => setFormEstoque(f => ({ ...f, tipo: t.tipo, kg: t.kg }))}
-                        className={`btn-option text-xs ${sel ? 'selected' : ''}`}
+                        key={n}
+                        onClick={() => setFormEstoque(f => ({ ...f, nivel: n }))}
+                        className={`btn-option flex-1 text-sm ${formEstoque.nivel === n ? 'selected' : ''}`}
                       >
-                        {t.tipo} {t.kg}{t.unidade || 'kg'}
+                        Nível {n}
                       </button>
-                    )
-                  })}
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              {/* Nível */}
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-slate-600">Nível de manutenção</p>
-                <div className="flex gap-2">
-                  {['2', '3'].map(n => (
+                {/* Quantidade — limitada ao que tem em estoque do item escolhido */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-slate-600">
+                    Quantidade {itemSelecionado && <span className="text-slate-400 font-normal">(máx. {maxQuantidade})</span>}
+                  </p>
+                  <div className="flex items-center gap-3">
                     <button
-                      key={n}
-                      onClick={() => setFormEstoque(f => ({ ...f, nivel: n }))}
-                      className={`btn-option flex-1 text-sm ${formEstoque.nivel === n ? 'selected' : ''}`}
-                    >
-                      Nível {n}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Quantidade */}
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-slate-600">Quantidade</p>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setFormEstoque(f => ({ ...f, quantidade: Math.max(1, f.quantidade - 1) }))}
-                    className="w-9 h-9 rounded-lg border border-slate-200 text-slate-600 text-lg flex items-center justify-center hover:bg-slate-50"
-                  >−</button>
-                  <span className="text-lg font-bold text-sci-text w-8 text-center">{formEstoque.quantidade}</span>
-                  <button
-                    onClick={() => setFormEstoque(f => ({ ...f, quantidade: f.quantidade + 1 }))}
-                    className="w-9 h-9 rounded-lg border border-slate-200 text-slate-600 text-lg flex items-center justify-center hover:bg-slate-50"
-                  >+</button>
-                </div>
-              </div>
-
-              {/* Equipe */}
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-slate-600">Equipe</p>
-                <div className="grid grid-cols-4 gap-2">
-                  {EQUIPES.map(eq => (
+                      onClick={() => setFormEstoque(f => ({ ...f, quantidade: Math.max(1, f.quantidade - 1) }))}
+                      disabled={formEstoque.quantidade <= 1}
+                      className="w-9 h-9 rounded-lg border border-slate-200 text-slate-600 text-lg flex items-center justify-center hover:bg-slate-50 disabled:opacity-30"
+                    >−</button>
+                    <span className="text-lg font-bold text-sci-text w-8 text-center">{formEstoque.quantidade}</span>
                     <button
-                      key={eq}
-                      onClick={() => setFormEstoque(f => ({ ...f, equipe: eq }))}
-                      className={`btn-option text-sm font-semibold ${formEstoque.equipe === eq ? 'selected' : ''}`}
-                    >
-                      {eq}
-                    </button>
-                  ))}
+                      onClick={() => setFormEstoque(f => ({ ...f, quantidade: Math.min(maxQuantidade, f.quantidade + 1) }))}
+                      disabled={formEstoque.quantidade >= maxQuantidade}
+                      className="w-9 h-9 rounded-lg border border-slate-200 text-slate-600 text-lg flex items-center justify-center hover:bg-slate-50 disabled:opacity-30"
+                    >+</button>
+                  </div>
                 </div>
-              </div>
 
-              <button
-                disabled={!formEstoque.tipo || !formEstoque.nivel || !formEstoque.equipe || enviandoEstoque || !responsavel}
-                onClick={async () => {
-                  if (!responsavel) return alert('Informe seu nome antes de registrar.')
-                  setEnviandoEstoque(true)
-                  try {
-                    const resultado = await registrarEnvioEstoque({
-                      tipo: formEstoque.tipo,
-                      kg: formEstoque.kg,
-                      nivel: parseInt(formEstoque.nivel),
-                      quantidade: formEstoque.quantidade,
-                      responsavel,
-                      equipe: formEstoque.equipe
-                    })
-                    setFormEstoque({ tipo: '', kg: '', nivel: '', quantidade: 1, equipe: '' })
-                    setEstoquePainel(false)
-                    showToast(
-                      resultado.queued ? 'Sem conexão — será enviado automaticamente ao reconectar.' : 'Envio para o depósito registrado com sucesso.',
-                      resultado.queued ? 'aviso' : 'sucesso'
-                    )
-                    await carregar()
-                  } catch (e) {
-                    alert('Erro: ' + e.message)
-                  } finally {
-                    setEnviandoEstoque(false)
-                  }
-                }}
-                className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {enviandoEstoque ? 'Registrando...' : `Registrar envio${formEstoque.quantidade > 1 ? ` (${formEstoque.quantidade} unidades)` : ''}`}
-              </button>
-            </div>
-          )}
+                {/* Equipe */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-slate-600">Equipe</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {EQUIPES.map(eq => (
+                      <button
+                        key={eq}
+                        onClick={() => setFormEstoque(f => ({ ...f, equipe: eq }))}
+                        className={`btn-option text-sm font-semibold ${formEstoque.equipe === eq ? 'selected' : ''}`}
+                      >
+                        {eq}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  disabled={!formEstoque.tipo || !formEstoque.nivel || !formEstoque.equipe || enviandoEstoque || !responsavel}
+                  onClick={async () => {
+                    if (!responsavel) return alert('Informe seu nome antes de registrar.')
+                    setEnviandoEstoque(true)
+                    try {
+                      const resultado = await registrarEnvioEstoque({
+                        tipo: formEstoque.tipo,
+                        kg: formEstoque.kg,
+                        nivel: parseInt(formEstoque.nivel),
+                        quantidade: formEstoque.quantidade,
+                        categoria: formEstoque.categoria,
+                        responsavel,
+                        equipe: formEstoque.equipe
+                      })
+                      setFormEstoque({ categoria: 'SCI', tipo: '', kg: '', nivel: '', quantidade: 1, equipe: '' })
+                      setEstoquePainel(false)
+                      showToast(
+                        resultado.queued ? 'Sem conexão — será enviado automaticamente ao reconectar.' : 'Envio para o depósito registrado com sucesso.',
+                        resultado.queued ? 'aviso' : 'sucesso'
+                      )
+                      await carregar()
+                    } catch (e) {
+                      alert('Erro: ' + e.message)
+                    } finally {
+                      setEnviandoEstoque(false)
+                    }
+                  }}
+                  className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {enviandoEstoque ? 'Registrando...' : `Registrar envio${formEstoque.quantidade > 1 ? ` (${formEstoque.quantidade} unidades)` : ''}`}
+                </button>
+              </div>
+            )
+          })()}
         </div>
       </section>}
 
@@ -522,7 +577,9 @@ export default function Manutencoes() {
                                 )}
                               </>
                             ) : (
-                              <span className={sel ? 'text-slate-300' : 'text-slate-500'}>Estoque / Depósito</span>
+                              <span className={sel ? 'text-slate-300' : 'text-slate-500'}>
+                                Estoque {o.origem_categoria || ''} / Depósito
+                              </span>
                             )}
                           </p>
                           <p className={`text-xs mt-0.5 ${sel ? 'text-slate-300' : 'text-slate-500'}`}>

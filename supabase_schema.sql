@@ -92,6 +92,11 @@ create table ordens_manutencao (
   extintor_saiu_kg numeric(5,1),
   nivel_manutencao int not null check (nivel_manutencao in (2, 3)),
 
+  -- categoria do estoque_deposito de onde a unidade saiu — só preenchida
+  -- quando local_id é null (envio direto do estoque, não de um local
+  -- instalado); usada no recebimento pra saber onde creditar de volta.
+  origem_categoria text check (origem_categoria in ('SCI', 'RESERVA')),
+
   -- substituto colocado no lugar
   substituto_tipo text,
   substituto_kg numeric(5,1),
@@ -361,10 +366,12 @@ $$;
 
 create or replace function registrar_envio_estoque(
   p_tipo text, p_kg numeric, p_nivel int, p_quantidade int,
-  p_responsavel text, p_equipe text, p_lote_id uuid
+  p_responsavel text, p_equipe text, p_lote_id uuid, p_categoria text
 ) returns void
 language plpgsql
 as $$
+declare
+  v_deduzido_oper int;
 begin
   if exists (select 1 from ordens_manutencao where lote_id = p_lote_id) then
     return;
@@ -372,10 +379,29 @@ begin
 
   insert into ordens_manutencao (
     local_id, slot, extintor_saiu_tipo, extintor_saiu_kg, nivel_manutencao,
-    substituto_reserva, data_saida, responsavel_saida, equipe_saida, lote_id
+    substituto_reserva, origem_categoria, data_saida, responsavel_saida, equipe_saida, lote_id
   )
-  select null, null, p_tipo, p_kg, p_nivel, false, now(), p_responsavel, p_equipe, p_lote_id
+  select null, null, p_tipo, p_kg, p_nivel, false, p_categoria, now(), p_responsavel, p_equipe, p_lote_id
   from generate_series(1, p_quantidade);
+
+  -- Desconta do depósito de onde saiu — do total (operacional + não
+  -- operacional), começando pelo operacional. O guard de lote_id acima já
+  -- impede reexecução em replay offline, então não precisa de um segundo
+  -- flag de idempotência aqui.
+  select coalesce(quantidade, 0) into v_deduzido_oper
+  from estoque_deposito
+  where tipo = p_tipo and kg = p_kg and categoria = p_categoria and operacional = true;
+  v_deduzido_oper := least(coalesce(v_deduzido_oper, 0), p_quantidade);
+
+  update estoque_deposito
+  set quantidade = greatest(0, quantidade - v_deduzido_oper), atualizado_em = now()
+  where tipo = p_tipo and kg = p_kg and categoria = p_categoria and operacional = true;
+
+  if p_quantidade - v_deduzido_oper > 0 then
+    update estoque_deposito
+    set quantidade = greatest(0, quantidade - (p_quantidade - v_deduzido_oper)), atualizado_em = now()
+    where tipo = p_tipo and kg = p_kg and categoria = p_categoria and operacional = false;
+  end if;
 end;
 $$;
 
@@ -385,16 +411,31 @@ create or replace function registrar_recebimento_ordem(
 ) returns void
 language plpgsql
 as $$
+declare
+  v_ordem ordens_manutencao%rowtype;
 begin
+  select * into v_ordem from ordens_manutencao where id = p_ordem_id;
+  if v_ordem.status = 'CONCLUIDA' then
+    return; -- já processada — idempotente em replay offline
+  end if;
+
   update ordens_manutencao set
     status = 'CONCLUIDA', data_retorno = now(), responsavel_retorno = p_responsavel,
     equipe_retorno = p_equipe, extintor_retornou_para = 'ESTOQUE'
   where id = p_ordem_id;
 
-  if p_local_id is not null then
+  if v_ordem.local_id is not null then
     insert into historico_operacoes (modo, local_id, slot, ordem_manutencao_id, responsavel, equipe, payload, client_op_id)
-    values ('logistica_retorno', p_local_id, p_slot, p_ordem_id, p_responsavel, p_equipe, jsonb_build_object('destino', 'ESTOQUE'), p_client_op_id)
+    values ('logistica_retorno', v_ordem.local_id, v_ordem.slot, p_ordem_id, p_responsavel, p_equipe, jsonb_build_object('destino', 'ESTOQUE'), p_client_op_id)
     on conflict (client_op_id) do nothing;
+  else
+    -- Origem foi o Depósito (não um local instalado) — voltou pro estoque
+    -- (extintor_retornou_para='ESTOQUE'), credita de volta na mesma
+    -- categoria de onde saiu.
+    update estoque_deposito
+    set quantidade = quantidade + 1, atualizado_em = now()
+    where tipo = v_ordem.extintor_saiu_tipo and kg = v_ordem.extintor_saiu_kg
+      and categoria = v_ordem.origem_categoria and operacional = true;
   end if;
 end;
 $$;
