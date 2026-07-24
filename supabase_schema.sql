@@ -90,7 +90,7 @@ create table ordens_manutencao (
   -- extintor que saiu
   extintor_saiu_tipo text not null,
   extintor_saiu_kg numeric(5,1),
-  nivel_manutencao int not null check (nivel_manutencao in (2, 3)),
+  nivel_manutencao int check (nivel_manutencao in (2, 3)),
 
   -- categoria do estoque_deposito de onde a unidade saiu — só preenchida
   -- quando local_id é null (envio direto do estoque, não de um local

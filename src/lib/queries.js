@@ -253,7 +253,7 @@ async function _registrarEnvioEstoque({ tipo, kg, nivel, quantidade, responsavel
   const { error } = await supabase.rpc('registrar_envio_estoque', {
     p_tipo: tipo,
     p_kg: parseFloat(kg),
-    p_nivel: parseInt(nivel),
+    p_nivel: nivel ? parseInt(nivel) : null,
     p_quantidade: quantidade,
     p_responsavel: responsavel,
     p_equipe: equipe,

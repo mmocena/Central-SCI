@@ -54,7 +54,11 @@ export default function Manutencoes() {
   const [estoqueReserva, setEstoqueReserva] = useState([])
   const [estoqueSCI, setEstoqueSCI] = useState([])
   const [loading, setLoading] = useState(true)
-  const [formEstoque, setFormEstoque] = useState({ categoria: 'SCI', tipo: '', kg: '', nivel: '', quantidade: 1, equipe: '' })
+  // Quantidade a enviar por item (chave "tipo|kg"), pra montar um envio com
+  // vários tipos diferentes de uma vez — cada linha da tabela tem sua
+  // própria seta +/-.
+  const [qtdEnvio, setQtdEnvio] = useState({})
+  const [equipeEnvioEstoque, setEquipeEnvioEstoque] = useState('')
   const [enviandoEstoque, setEnviandoEstoque] = useState(false)
   const [estoquePainel, setEstoquePainel] = useState(false)
   const [pontosPainel, setPontosPainel] = useState(false)
@@ -361,71 +365,76 @@ export default function Manutencoes() {
             // Só SCI — RESERVA é da empresa que faz a manutenção, não são
             // extintores nossos pra mandar consertar. Quantidade é o total
             // (operacional + não operacional somados) de cada tipo/kg.
-            const itemSelecionado = estoqueSCI.find(e => e.tipo === formEstoque.tipo && String(e.kg) === String(formEstoque.kg))
-            const maxQuantidade = itemSelecionado?.quantidade || 1
+            const itens = Object.entries(qtdEnvio).filter(([, qtd]) => qtd > 0)
+            const totalGeral = itens.reduce((s, [, qtd]) => s + qtd, 0)
+
+            const setQtd = (chave, max, valor) => {
+              const v = Math.max(0, Math.min(max, valor))
+              setQtdEnvio(q => ({ ...q, [chave]: v }))
+            }
 
             return (
               <div className="border-t border-slate-100 p-4 space-y-4">
-                {/* Tipo/kg — só o que existe de verdade no depósito (SCI),
-                    com a quantidade total disponível à vista, pra não deixar
-                    enviar mais do que realmente tem. */}
+                {/* Tabela Tipo / Disponível / Qtd a enviar — mesmo visual do TabelaEstoque do Depósito */}
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-slate-600">Tipo / kg (SCI)</p>
                   {estoqueSCI.length === 0 ? (
                     <p className="text-xs text-slate-400 italic">Nenhum item em estoque.</p>
                   ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {estoqueSCI.map(e => {
-                        const sel = formEstoque.tipo === e.tipo && String(formEstoque.kg) === String(e.kg)
-                        return (
-                          <button
-                            key={`${e.tipo}-${e.kg}`}
-                            onClick={() => setFormEstoque(f => ({ ...f, tipo: e.tipo, kg: e.kg, quantidade: 1 }))}
-                            className={`btn-option text-xs ${sel ? 'selected' : ''}`}
-                          >
-                            {e.tipo} {e.kg}{unidadeDoTipo(e.tipo, tiposExtintor)} — {e.quantidade} disponível{e.quantidade > 1 ? 'is' : ''}
-                          </button>
-                        )
-                      })}
+                    <div className="rounded-xl border border-slate-200 overflow-hidden">
+                      <div className="grid grid-cols-[1fr,4.5rem,6rem] gap-1 items-center px-3 py-2 bg-slate-50 text-[10px] font-semibold uppercase text-slate-400">
+                        <span>Tipo</span>
+                        <span className="text-center">Disponível</span>
+                        <span className="text-center">Qtd a enviar</span>
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {estoqueSCI.map(e => {
+                          const chave = `${e.tipo}|${e.kg}`
+                          const qtd = qtdEnvio[chave] || 0
+                          return (
+                            <div key={chave} className="grid grid-cols-[1fr,4.5rem,6rem] gap-1 items-center px-3 py-2">
+                              <span className="text-sm text-sci-text">{e.tipo} {e.kg}{unidadeDoTipo(e.tipo, tiposExtintor)}</span>
+                              <span className="text-sm text-center text-slate-500">{e.quantidade}</span>
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => setQtd(chave, e.quantidade, qtd - 1)}
+                                  disabled={qtd === 0}
+                                  className="w-6 h-6 rounded border border-slate-200 text-slate-500 text-sm leading-none flex items-center justify-center hover:bg-slate-50 disabled:opacity-30"
+                                >−</button>
+                                <span className={`w-5 text-center text-sm font-semibold ${qtd === 0 ? 'text-slate-300' : 'text-sci-text'}`}>{qtd}</span>
+                                <button
+                                  onClick={() => setQtd(chave, e.quantidade, qtd + 1)}
+                                  disabled={qtd >= e.quantidade}
+                                  className="w-6 h-6 rounded border border-slate-200 text-slate-500 text-sm leading-none flex items-center justify-center hover:bg-slate-50 disabled:opacity-30"
+                                >+</button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
 
-                {/* Nível */}
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-slate-600">Nível de manutenção</p>
-                  <div className="flex gap-2">
-                    {['2', '3'].map(n => (
-                      <button
-                        key={n}
-                        onClick={() => setFormEstoque(f => ({ ...f, nivel: n }))}
-                        className={`btn-option flex-1 text-sm ${formEstoque.nivel === n ? 'selected' : ''}`}
-                      >
-                        Nível {n}
-                      </button>
-                    ))}
+                {/* Resumo do que será enviado */}
+                {itens.length > 0 && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-1.5">
+                    <p className="text-xs font-semibold text-blue-700">Será enviado:</p>
+                    {itens.map(([chave, qtd]) => {
+                      const [tipo, kg] = chave.split('|')
+                      return (
+                        <div key={chave} className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-blue-800">{tipo} {kg}{unidadeDoTipo(tipo, tiposExtintor)}</span>
+                          <span className="text-sm font-bold text-blue-900">× {qtd}</span>
+                        </div>
+                      )
+                    })}
+                    <div className="flex items-center justify-between border-t border-blue-200 pt-1.5">
+                      <span className="text-xs font-semibold text-blue-700">Total geral</span>
+                      <span className="text-sm font-bold text-blue-900">{totalGeral}</span>
+                    </div>
                   </div>
-                </div>
-
-                {/* Quantidade — limitada ao que tem em estoque do item escolhido */}
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-slate-600">
-                    Quantidade {itemSelecionado && <span className="text-slate-400 font-normal">(máx. {maxQuantidade})</span>}
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => setFormEstoque(f => ({ ...f, quantidade: Math.max(1, f.quantidade - 1) }))}
-                      disabled={formEstoque.quantidade <= 1}
-                      className="w-9 h-9 rounded-lg border border-slate-200 text-slate-600 text-lg flex items-center justify-center hover:bg-slate-50 disabled:opacity-30"
-                    >−</button>
-                    <span className="text-lg font-bold text-sci-text w-8 text-center">{formEstoque.quantidade}</span>
-                    <button
-                      onClick={() => setFormEstoque(f => ({ ...f, quantidade: Math.min(maxQuantidade, f.quantidade + 1) }))}
-                      disabled={formEstoque.quantidade >= maxQuantidade}
-                      className="w-9 h-9 rounded-lg border border-slate-200 text-slate-600 text-lg flex items-center justify-center hover:bg-slate-50 disabled:opacity-30"
-                    >+</button>
-                  </div>
-                </div>
+                )}
 
                 {/* Equipe */}
                 <div className="space-y-2">
@@ -434,8 +443,8 @@ export default function Manutencoes() {
                     {EQUIPES.map(eq => (
                       <button
                         key={eq}
-                        onClick={() => setFormEstoque(f => ({ ...f, equipe: eq }))}
-                        className={`btn-option text-sm font-semibold ${formEstoque.equipe === eq ? 'selected' : ''}`}
+                        onClick={() => setEquipeEnvioEstoque(eq)}
+                        className={`btn-option text-sm font-semibold ${equipeEnvioEstoque === eq ? 'selected' : ''}`}
                       >
                         {eq}
                       </button>
@@ -444,25 +453,30 @@ export default function Manutencoes() {
                 </div>
 
                 <button
-                  disabled={!formEstoque.tipo || !formEstoque.nivel || !formEstoque.equipe || enviandoEstoque || !responsavel}
+                  disabled={itens.length === 0 || !equipeEnvioEstoque || enviandoEstoque || !responsavel}
                   onClick={async () => {
                     if (!responsavel) return alert('Informe seu nome antes de registrar.')
                     setEnviandoEstoque(true)
                     try {
-                      const resultado = await registrarEnvioEstoque({
-                        tipo: formEstoque.tipo,
-                        kg: formEstoque.kg,
-                        nivel: parseInt(formEstoque.nivel),
-                        quantidade: formEstoque.quantidade,
-                        categoria: formEstoque.categoria,
-                        responsavel,
-                        equipe: formEstoque.equipe
-                      })
-                      setFormEstoque({ categoria: 'SCI', tipo: '', kg: '', nivel: '', quantidade: 1, equipe: '' })
+                      let algumEnfileirado = false
+                      for (const [chave, qtd] of itens) {
+                        const [tipo, kg] = chave.split('|')
+                        const resultado = await registrarEnvioEstoque({
+                          tipo,
+                          kg,
+                          quantidade: qtd,
+                          categoria: 'SCI',
+                          responsavel,
+                          equipe: equipeEnvioEstoque
+                        })
+                        if (resultado.queued) algumEnfileirado = true
+                      }
+                      setQtdEnvio({})
+                      setEquipeEnvioEstoque('')
                       setEstoquePainel(false)
                       showToast(
-                        resultado.queued ? 'Sem conexão — será enviado automaticamente ao reconectar.' : 'Envio para o depósito registrado com sucesso.',
-                        resultado.queued ? 'aviso' : 'sucesso'
+                        algumEnfileirado ? 'Sem conexão — será enviado automaticamente ao reconectar.' : 'Envio para o depósito registrado com sucesso.',
+                        algumEnfileirado ? 'aviso' : 'sucesso'
                       )
                       await carregar()
                     } catch (e) {
@@ -473,7 +487,7 @@ export default function Manutencoes() {
                   }}
                   className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  {enviandoEstoque ? 'Registrando...' : `Registrar envio${formEstoque.quantidade > 1 ? ` (${formEstoque.quantidade} unidades)` : ''}`}
+                  {enviandoEstoque ? 'Registrando...' : `Registrar envio${totalGeral > 1 ? ` (${totalGeral} unidades)` : ''}`}
                 </button>
               </div>
             )
@@ -583,7 +597,7 @@ export default function Manutencoes() {
                             )}
                           </p>
                           <p className={`text-xs mt-0.5 ${sel ? 'text-slate-300' : 'text-slate-500'}`}>
-                            Nível {o.nivel_manutencao} · Saída {formatarData(o.data_saida)} · {o.responsavel_saida}
+                            {o.nivel_manutencao && `Nível ${o.nivel_manutencao} · `}Saída {formatarData(o.data_saida)} · {o.responsavel_saida}
                           </p>
                           {o.locais && (
                             <p className={`text-xs mt-0.5 ${sel ? 'text-slate-400' : 'text-slate-400'}`}>
