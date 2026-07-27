@@ -556,3 +556,309 @@ insert into fatores_sinalizacao_nao_conforme (descricao, ordem) values
   ('Placa danificada/ilegível', 2),
   ('Placa com posição inadequada', 3),
   ('Sinalização obstruída', 4);
+
+-- ============================================================
+-- Setor Hidrantes/Mangueiras — Camada 1: cadastro base.
+-- Mangueira é ativo individual rastreável (identificação própria), não
+-- estoque agregado por tipo como os extintores. Hidrante é ponto único de
+-- checagem (sem slots A/B). CCI tem dotação fixa esperada. Rota /mangueiras
+-- fica fora do menu principal por enquanto — ver memória
+-- project-central-sci-mangueiras.
+-- ============================================================
+
+-- Catálogo de tipos de mangueira (admin configura), mesmo espírito de tipos_extintor
+create table tipos_mangueira (
+  id uuid primary key default gen_random_uuid(),
+  tipo text not null,                 -- classificação (ex: Tipo 1, Tipo 2 — NBR 12779)
+  diametro text not null,             -- ex: 1 1/2", 2 1/2"
+  comprimento numeric(5,1) not null,  -- ex: 15, 30 (metros)
+  ativo boolean default true,
+  criado_em timestamptz default now()
+);
+
+-- Hidrantes (cadastro admin), ponto único — sem slots. Sem campo de
+-- exigência ainda (tipo de mangueira exigida, "Planta") — decisão adiada
+-- pra Camada 2, junto com o desenho da vistoria.
+create table hidrantes (
+  id uuid primary key default gen_random_uuid(),
+  numero int not null unique,
+  edificacao text not null,
+  descricao text,
+  ativo boolean default true,
+  criado_em timestamptz default now()
+);
+
+-- CCIs (viaturas)
+create table ccis (
+  id uuid primary key default gen_random_uuid(),
+  numero int not null unique,
+  placa text,
+  modelo text,
+  ativo boolean default true,
+  criado_em timestamptz default now()
+);
+
+-- Dotação esperada por hidrante ou CCI (quais tipos/quantidades de
+-- mangueira aquele local deveria ter) — generalizada por local_tipo em vez
+-- de uma tabela por tipo de local, já que hidrante e CCI usam exatamente a
+-- mesma forma.
+create table dotacao_mangueira (
+  id uuid primary key default gen_random_uuid(),
+  local_tipo text not null check (local_tipo in ('HIDRANTE', 'CCI')),
+  hidrante_id uuid references hidrantes(id) on delete cascade,
+  cci_id uuid references ccis(id) on delete cascade,
+  tipo_mangueira_id uuid not null references tipos_mangueira(id),
+  quantidade_exigida int not null check (quantidade_exigida > 0),
+  check (
+    (local_tipo = 'HIDRANTE' and hidrante_id is not null and cci_id is null) or
+    (local_tipo = 'CCI' and cci_id is not null and hidrante_id is null)
+  ),
+  unique (local_tipo, hidrante_id, cci_id, tipo_mangueira_id)
+);
+
+-- Mangueiras — ativo individual + localização atual (denormalizada por
+-- enquanto; se uma camada futura precisar de histórico de movimentação,
+-- vira snapshot+histórico como local_estado_atual/historico_operacoes —
+-- decisão adiada até lá, não faz sentido antecipar sem uso real). Colunas
+-- de inspeção (Camada 2) ficam direto aqui pelo mesmo motivo — validade e
+-- integridade são propriedade da mangueira, não do local onde ela está.
+create table mangueiras (
+  id uuid primary key default gen_random_uuid(),
+  identificacao text not null unique,  -- tag/número de série
+  tipo_mangueira_id uuid not null references tipos_mangueira(id),
+  localizacao_tipo text not null check (localizacao_tipo in ('HIDRANTE', 'CCI', 'DEPOSITO')),
+  hidrante_id uuid references hidrantes(id),
+  cci_id uuid references ccis(id),
+  validade_teste_hidrostatico date,
+
+  -- última vistoria (Camada 2)
+  integridade_ok boolean,
+  fatores_integridade text[],
+  situacao_conformidade text check (situacao_conformidade in ('conforme', 'nao_conforme')),
+  observacoes text,
+  data_ultima_inspecao timestamptz,
+  responsavel_ultima_inspecao text,
+  equipe_ultima_inspecao text,
+
+  ativo boolean default true,
+  criado_em timestamptz default now(),
+  check (
+    (localizacao_tipo = 'HIDRANTE' and hidrante_id is not null and cci_id is null) or
+    (localizacao_tipo = 'CCI' and cci_id is not null and hidrante_id is null) or
+    (localizacao_tipo = 'DEPOSITO' and hidrante_id is null and cci_id is null)
+  )
+);
+
+-- Salva a dotação inteira de um hidrante ou CCI de uma vez (apaga as
+-- linhas antigas e insere as novas, numa transação só).
+create or replace function salvar_dotacao_mangueira(p_local_tipo text, p_local_id uuid, p_itens jsonb)
+returns void
+language plpgsql
+as $$
+begin
+  delete from dotacao_mangueira
+  where local_tipo = p_local_tipo
+    and (hidrante_id = p_local_id or cci_id = p_local_id);
+  insert into dotacao_mangueira (local_tipo, hidrante_id, cci_id, tipo_mangueira_id, quantidade_exigida)
+  select p_local_tipo,
+    case when p_local_tipo = 'HIDRANTE' then p_local_id end,
+    case when p_local_tipo = 'CCI' then p_local_id end,
+    (item->>'tipo_mangueira_id')::uuid, (item->>'quantidade')::int
+  from jsonb_array_elements(p_itens) as item;
+end;
+$$;
+
+-- ============================================================
+-- Setor Hidrantes/Mangueiras — Camada 2: vistoria dos 3 cenários (caixa de
+-- hidrante, CCI, depósito). Sinalização da caixa de hidrante reaproveita o
+-- catálogo fatores_sinalizacao_nao_conforme já usado pelos extintores —
+-- sem tabela nova pra isso.
+-- ============================================================
+
+create table fatores_integridade_mangueira (
+  id uuid primary key default gen_random_uuid(),
+  descricao text not null,
+  ativo boolean default true,
+  ordem int default 0
+);
+
+create table fatores_esguicho_nao_conforme (
+  id uuid primary key default gen_random_uuid(),
+  descricao text not null,
+  ativo boolean default true,
+  ordem int default 0
+);
+
+create table fatores_chave_mangueira_nao_conforme (
+  id uuid primary key default gen_random_uuid(),
+  descricao text not null,
+  ativo boolean default true,
+  ordem int default 0
+);
+
+create table fatores_integridade_caixa_hidrante (
+  id uuid primary key default gen_random_uuid(),
+  descricao text not null,
+  ativo boolean default true,
+  ordem int default 0
+);
+
+-- Estado da caixa de hidrante (esguicho/chave/caixa/sinalização) — as
+-- mangueiras presentes ficam no próprio registro de cada uma, não aqui.
+create table hidrante_estado_atual (
+  id uuid primary key default gen_random_uuid(),
+  hidrante_id uuid not null unique references hidrantes(id) on delete cascade,
+
+  situacao_conformidade text check (situacao_conformidade in ('conforme', 'nao_conforme')),
+  motivo_nao_conformidade text,
+  observacoes text,
+
+  esguicho_ok boolean,
+  fatores_esguicho text[],
+  chave_ok boolean,
+  fatores_chave text[],
+  caixa_ok boolean,
+  fatores_caixa text[],
+  sinalizacao_ok boolean,
+  fatores_sinalizacao text[],
+
+  data_ultima_inspecao timestamptz,
+  responsavel_ultima_inspecao text,
+  equipe_ultima_inspecao text,
+  atualizado_em timestamptz default now()
+);
+
+-- Estado do CCI — só metadados de auditoria da última vistoria; a
+-- conformidade de "mangueiras" é derivada das próprias mangueiras +
+-- dotacao_mangueira, sem duplicar aqui.
+create table cci_estado_atual (
+  id uuid primary key default gen_random_uuid(),
+  cci_id uuid not null unique references ccis(id) on delete cascade,
+  situacao_conformidade text check (situacao_conformidade in ('conforme', 'nao_conforme')),
+  observacoes text,
+  data_ultima_inspecao timestamptz,
+  responsavel_ultima_inspecao text,
+  equipe_ultima_inspecao text,
+  atualizado_em timestamptz default now()
+);
+
+-- Histórico próprio do setor — não reaproveita historico_operacoes dos
+-- extintores, que tem local_id fixo pra tabela locais (domínio de
+-- extintores), não dá pra apontar pra hidrante/CCI/mangueira.
+create table historico_operacoes_mangueiras (
+  id uuid primary key default gen_random_uuid(),
+  modo text not null check (modo in ('vistoria_hidrante', 'vistoria_cci', 'vistoria_mangueira')),
+  hidrante_id uuid references hidrantes(id),
+  cci_id uuid references ccis(id),
+  mangueira_id uuid references mangueiras(id),
+  data_operacao timestamptz default now(),
+  responsavel text not null,
+  equipe text not null check (equipe in ('ALFA', 'BRAVO', 'CHARLIE', 'DELTA')),
+  payload jsonb not null default '{}',
+  situacao_conformidade text check (situacao_conformidade in ('conforme', 'nao_conforme')),
+  client_op_id uuid unique
+);
+
+-- Vistoria de uma mangueira específica — usada pelos três cenários (uma
+-- mangueira é vistoriada do mesmo jeito esteja ela num hidrante, CCI ou
+-- depósito).
+create or replace function registrar_vistoria_mangueira(
+  p_mangueira_id uuid, p_responsavel text, p_equipe text, p_client_op_id uuid,
+  p_integridade_ok boolean, p_fatores_integridade text[],
+  p_conformidade text, p_observacoes text, p_payload jsonb
+) returns void
+language plpgsql
+as $$
+declare
+  v_hidrante_id uuid;
+  v_cci_id uuid;
+begin
+  select hidrante_id, cci_id into v_hidrante_id, v_cci_id from mangueiras where id = p_mangueira_id;
+
+  insert into historico_operacoes_mangueiras (modo, hidrante_id, cci_id, mangueira_id, responsavel, equipe, payload, situacao_conformidade, client_op_id)
+  values ('vistoria_mangueira', v_hidrante_id, v_cci_id, p_mangueira_id, p_responsavel, p_equipe, p_payload, p_conformidade, p_client_op_id)
+  on conflict (client_op_id) do nothing;
+
+  update mangueiras set
+    integridade_ok = p_integridade_ok,
+    fatores_integridade = p_fatores_integridade,
+    situacao_conformidade = p_conformidade,
+    observacoes = p_observacoes,
+    data_ultima_inspecao = now(),
+    responsavel_ultima_inspecao = p_responsavel,
+    equipe_ultima_inspecao = p_equipe
+  where id = p_mangueira_id;
+end;
+$$;
+
+create or replace function registrar_vistoria_hidrante(
+  p_hidrante_id uuid, p_responsavel text, p_equipe text, p_client_op_id uuid,
+  p_esguicho_ok boolean, p_fatores_esguicho text[],
+  p_chave_ok boolean, p_fatores_chave text[],
+  p_caixa_ok boolean, p_fatores_caixa text[],
+  p_sinalizacao_ok boolean, p_fatores_sinalizacao text[],
+  p_conformidade text, p_motivo_nao_conformidade text, p_observacoes text, p_payload jsonb
+) returns void
+language plpgsql
+as $$
+begin
+  insert into historico_operacoes_mangueiras (modo, hidrante_id, responsavel, equipe, payload, situacao_conformidade, client_op_id)
+  values ('vistoria_hidrante', p_hidrante_id, p_responsavel, p_equipe, p_payload, p_conformidade, p_client_op_id)
+  on conflict (client_op_id) do nothing;
+
+  insert into hidrante_estado_atual (
+    hidrante_id, situacao_conformidade, motivo_nao_conformidade, observacoes,
+    esguicho_ok, fatores_esguicho, chave_ok, fatores_chave,
+    caixa_ok, fatores_caixa, sinalizacao_ok, fatores_sinalizacao,
+    data_ultima_inspecao, responsavel_ultima_inspecao, equipe_ultima_inspecao, atualizado_em
+  ) values (
+    p_hidrante_id, p_conformidade, p_motivo_nao_conformidade, p_observacoes,
+    p_esguicho_ok, p_fatores_esguicho, p_chave_ok, p_fatores_chave,
+    p_caixa_ok, p_fatores_caixa, p_sinalizacao_ok, p_fatores_sinalizacao,
+    now(), p_responsavel, p_equipe, now()
+  )
+  on conflict (hidrante_id) do update set
+    situacao_conformidade = excluded.situacao_conformidade,
+    motivo_nao_conformidade = excluded.motivo_nao_conformidade,
+    observacoes = excluded.observacoes,
+    esguicho_ok = excluded.esguicho_ok,
+    fatores_esguicho = excluded.fatores_esguicho,
+    chave_ok = excluded.chave_ok,
+    fatores_chave = excluded.fatores_chave,
+    caixa_ok = excluded.caixa_ok,
+    fatores_caixa = excluded.fatores_caixa,
+    sinalizacao_ok = excluded.sinalizacao_ok,
+    fatores_sinalizacao = excluded.fatores_sinalizacao,
+    data_ultima_inspecao = excluded.data_ultima_inspecao,
+    responsavel_ultima_inspecao = excluded.responsavel_ultima_inspecao,
+    equipe_ultima_inspecao = excluded.equipe_ultima_inspecao,
+    atualizado_em = excluded.atualizado_em;
+end;
+$$;
+
+create or replace function registrar_vistoria_cci(
+  p_cci_id uuid, p_responsavel text, p_equipe text, p_client_op_id uuid,
+  p_conformidade text, p_observacoes text, p_payload jsonb
+) returns void
+language plpgsql
+as $$
+begin
+  insert into historico_operacoes_mangueiras (modo, cci_id, responsavel, equipe, payload, situacao_conformidade, client_op_id)
+  values ('vistoria_cci', p_cci_id, p_responsavel, p_equipe, p_payload, p_conformidade, p_client_op_id)
+  on conflict (client_op_id) do nothing;
+
+  insert into cci_estado_atual (
+    cci_id, situacao_conformidade, observacoes,
+    data_ultima_inspecao, responsavel_ultima_inspecao, equipe_ultima_inspecao, atualizado_em
+  ) values (
+    p_cci_id, p_conformidade, p_observacoes, now(), p_responsavel, p_equipe, now()
+  )
+  on conflict (cci_id) do update set
+    situacao_conformidade = excluded.situacao_conformidade,
+    observacoes = excluded.observacoes,
+    data_ultima_inspecao = excluded.data_ultima_inspecao,
+    responsavel_ultima_inspecao = excluded.responsavel_ultima_inspecao,
+    equipe_ultima_inspecao = excluded.equipe_ultima_inspecao,
+    atualizado_em = excluded.atualizado_em;
+end;
+$$;

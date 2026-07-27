@@ -48,6 +48,112 @@ export async function fetchFatoresSinalizacao() {
   return data
 }
 
+// ────────────────────────────────────────────────────────────────
+// Setor Hidrantes/Mangueiras — Camada 1 (cadastro base). Leituras usadas
+// por quem consome essas listas fora da própria tela de cadastro (ex:
+// pickers de tipo/hidrante/CCI em outros formulários) — a listagem
+// ativos+inativos de cada aba do cadastro em si consulta o Supabase
+// direto no componente, mesmo padrão já usado em Admin.jsx.
+// ────────────────────────────────────────────────────────────────
+
+export async function fetchTiposMangueira() {
+  const { data, error } = await supabase
+    .from('tipos_mangueira')
+    .select('*')
+    .eq('ativo', true)
+    .order('diametro')
+
+  if (error) throw error
+  return data
+}
+
+export async function fetchHidrantes() {
+  const { data, error } = await supabase
+    .from('hidrantes')
+    .select('*')
+    .eq('ativo', true)
+    .order('numero')
+
+  if (error) throw error
+  return data
+}
+
+export async function fetchCcis() {
+  const { data, error } = await supabase
+    .from('ccis')
+    .select('*')
+    .eq('ativo', true)
+    .order('numero')
+
+  if (error) throw error
+  return data
+}
+
+// localTipo: 'HIDRANTE' | 'CCI'
+export async function fetchDotacaoMangueira(localTipo, localId) {
+  const coluna = localTipo === 'HIDRANTE' ? 'hidrante_id' : 'cci_id'
+  const { data, error } = await supabase
+    .from('dotacao_mangueira')
+    .select('*, tipos_mangueira(tipo, diametro, comprimento)')
+    .eq('local_tipo', localTipo)
+    .eq(coluna, localId)
+
+  if (error) throw error
+  return data
+}
+
+export async function fetchMangueiras() {
+  const { data, error } = await supabase
+    .from('mangueiras')
+    .select('*, tipos_mangueira(tipo, diametro, comprimento), hidrantes(numero, edificacao), ccis(numero, placa)')
+    .eq('ativo', true)
+    .order('identificacao')
+
+  if (error) throw error
+  return data
+}
+
+// Catálogos de fatores da vistoria (Camada 2) — mesmo padrão de
+// fetchFatoresNaoOperacionalidade/fetchFatoresSinalizacao.
+export async function fetchFatoresIntegridadeMangueira() {
+  const { data, error } = await supabase.from('fatores_integridade_mangueira').select('*').eq('ativo', true).order('ordem')
+  if (error) throw error
+  return data
+}
+
+export async function fetchFatoresEsguicho() {
+  const { data, error } = await supabase.from('fatores_esguicho_nao_conforme').select('*').eq('ativo', true).order('ordem')
+  if (error) throw error
+  return data
+}
+
+export async function fetchFatoresChaveMangueira() {
+  const { data, error } = await supabase.from('fatores_chave_mangueira_nao_conforme').select('*').eq('ativo', true).order('ordem')
+  if (error) throw error
+  return data
+}
+
+export async function fetchFatoresIntegridadeCaixaHidrante() {
+  const { data, error } = await supabase.from('fatores_integridade_caixa_hidrante').select('*').eq('ativo', true).order('ordem')
+  if (error) throw error
+  return data
+}
+
+// salvar_dotacao_mangueira (RPC) apaga e recria a dotação inteira do
+// hidrante/CCI numa transação só — evita ficar com dotação parcialmente salva.
+async function _salvarDotacaoMangueira({ localTipo, localId, itens }) {
+  const { error } = await supabase.rpc('salvar_dotacao_mangueira', {
+    p_local_tipo: localTipo,
+    p_local_id: localId,
+    p_itens: itens.map(i => ({ tipo_mangueira_id: i.tipoMangueiraId, quantidade: i.quantidade }))
+  })
+  if (error) throw error
+}
+
+export async function salvarDotacaoMangueira(args) {
+  return executarOuEnfileirar('salvarDotacaoMangueira', args, _salvarDotacaoMangueira)
+}
+
 export async function fetchHistoricoInspecoes() {
   const { data, error } = await supabase
     .from('historico_operacoes')
@@ -319,6 +425,77 @@ export async function marcarReserva(args) {
   return executarOuEnfileirar('marcarReserva', args, _marcarReserva)
 }
 
+// ────────────────────────────────────────────────────────────────
+// Setor Hidrantes/Mangueiras — Camada 2 (vistoria). Mesmo padrão de
+// historico + upsert de estado numa transação só, idempotente via
+// client_op_id, já usado em registrar_inspecao pros extintores.
+// ────────────────────────────────────────────────────────────────
+
+async function _registrarVistoriaMangueira({ mangueiraId, responsavel, equipe, clientOpId, integridadeOk, fatoresIntegridade, conformidade, observacoes, payload }) {
+  const { error } = await supabase.rpc('registrar_vistoria_mangueira', {
+    p_mangueira_id: mangueiraId,
+    p_responsavel: responsavel,
+    p_equipe: equipe,
+    p_client_op_id: clientOpId,
+    p_integridade_ok: integridadeOk,
+    p_fatores_integridade: fatoresIntegridade?.length ? fatoresIntegridade : null,
+    p_conformidade: conformidade,
+    p_observacoes: observacoes ?? null,
+    p_payload: payload ?? {}
+  })
+  if (error) throw error
+}
+
+export async function registrarVistoriaMangueira(args) {
+  const clientOpId = args.clientOpId ?? crypto.randomUUID()
+  return executarOuEnfileirar('registrarVistoriaMangueira', { ...args, clientOpId }, _registrarVistoriaMangueira)
+}
+
+async function _registrarVistoriaHidrante({ hidranteId, responsavel, equipe, clientOpId, esguichoOk, fatoresEsguicho, chaveOk, fatoresChave, caixaOk, fatoresCaixa, sinalizacaoOk, fatoresSinalizacao, conformidade, motivoNaoConformidade, observacoes, payload }) {
+  const { error } = await supabase.rpc('registrar_vistoria_hidrante', {
+    p_hidrante_id: hidranteId,
+    p_responsavel: responsavel,
+    p_equipe: equipe,
+    p_client_op_id: clientOpId,
+    p_esguicho_ok: esguichoOk,
+    p_fatores_esguicho: fatoresEsguicho?.length ? fatoresEsguicho : null,
+    p_chave_ok: chaveOk,
+    p_fatores_chave: fatoresChave?.length ? fatoresChave : null,
+    p_caixa_ok: caixaOk,
+    p_fatores_caixa: fatoresCaixa?.length ? fatoresCaixa : null,
+    p_sinalizacao_ok: sinalizacaoOk,
+    p_fatores_sinalizacao: fatoresSinalizacao?.length ? fatoresSinalizacao : null,
+    p_conformidade: conformidade,
+    p_motivo_nao_conformidade: motivoNaoConformidade ?? null,
+    p_observacoes: observacoes ?? null,
+    p_payload: payload ?? {}
+  })
+  if (error) throw error
+}
+
+export async function registrarVistoriaHidrante(args) {
+  const clientOpId = args.clientOpId ?? crypto.randomUUID()
+  return executarOuEnfileirar('registrarVistoriaHidrante', { ...args, clientOpId }, _registrarVistoriaHidrante)
+}
+
+async function _registrarVistoriaCci({ cciId, responsavel, equipe, clientOpId, conformidade, observacoes, payload }) {
+  const { error } = await supabase.rpc('registrar_vistoria_cci', {
+    p_cci_id: cciId,
+    p_responsavel: responsavel,
+    p_equipe: equipe,
+    p_client_op_id: clientOpId,
+    p_conformidade: conformidade,
+    p_observacoes: observacoes ?? null,
+    p_payload: payload ?? {}
+  })
+  if (error) throw error
+}
+
+export async function registrarVistoriaCci(args) {
+  const clientOpId = args.clientOpId ?? crypto.randomUUID()
+  return executarOuEnfileirar('registrarVistoriaCci', { ...args, clientOpId }, _registrarVistoriaCci)
+}
+
 // Mapa usado pelo replay da fila offline (src/lib/syncOffline.js) — sempre
 // chama a versão interna (_xxx), nunca o wrapper público, senão um item que
 // falhar de novo por falta de rede voltaria a se enfileirar dentro do próprio replay.
@@ -336,6 +513,10 @@ export const HANDLERS_FILA = {
   excluirRegistroAdmin: _excluirRegistroAdmin,
   definirTrocaPlanejada: _definirTrocaPlanejada,
   cancelarTrocaPlanejada: _cancelarTrocaPlanejada,
+  salvarDotacaoMangueira: _salvarDotacaoMangueira,
+  registrarVistoriaMangueira: _registrarVistoriaMangueira,
+  registrarVistoriaHidrante: _registrarVistoriaHidrante,
+  registrarVistoriaCci: _registrarVistoriaCci,
 }
 
 // ────────────────────────────────────────────────────────────────

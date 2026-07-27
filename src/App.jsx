@@ -8,6 +8,8 @@ import Deposito from './pages/Deposito'
 import Relatorios from './pages/Relatorios'
 import NaoConformidades from './pages/NaoConformidades'
 import Admin from './pages/Admin'
+import AdminMangueiras from './pages/mangueiras/AdminMangueiras'
+import VistoriaMangueiras from './pages/mangueiras/Vistoria'
 import Header from './components/Header'
 
 export default function App() {
@@ -25,6 +27,10 @@ export default function App() {
           <Route path="/relatorios" element={<Relatorios />} />
           <Route path="/nao-conformidades" element={<NaoConformidades />} />
           <Route path="/admin/*" element={<Admin />} />
+          {/* Setor Hidrantes/Mangueiras — fora do menu principal de propósito
+              (ver memória project-central-sci-mangueiras), acesso só por URL direta. */}
+          <Route path="/mangueiras" element={<AdminMangueiras />} />
+          <Route path="/mangueiras/vistoria" element={<VistoriaMangueiras />} />
         </Routes>
       </main>
     </div>

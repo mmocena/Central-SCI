@@ -48,3 +48,13 @@ export function useToast() {
   if (!ctx) throw new Error('useToast deve ser usado dentro de ToastProvider')
   return ctx
 }
+
+// Usado após qualquer chamada que passa pela fila offline
+// (executarOuEnfileirar): mesma mensagem de sucesso se aplicou na hora, ou
+// aviso de fila se ficou pendente por falta de conexão.
+export function avisarResultado(showToast, resultado, msgSucesso) {
+  showToast(
+    resultado.queued ? 'Sem conexão — será enviado automaticamente ao reconectar.' : msgSucesso,
+    resultado.queued ? 'aviso' : 'sucesso'
+  )
+}
