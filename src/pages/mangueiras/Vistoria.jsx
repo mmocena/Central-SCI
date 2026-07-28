@@ -6,6 +6,7 @@ import {
   registrarVistoriaMangueira, registrarVistoriaHidrante, registrarVistoriaCci
 } from '../../lib/queries'
 import FatorChips, { descricoesFatores } from '../../components/FatorChips'
+import IconeCCI from '../../components/IconeCCI'
 import { calcularConformidadeMangueira, textoObservacaoAutomaticaMangueira, validadeHidrostaticaVencida } from '../../lib/conformidadeMangueira'
 import { useToast } from '../../components/Toast'
 
@@ -432,11 +433,11 @@ function AbaCcis({ responsavel, bloqueado }) {
   return (
     <div className="space-y-2">
       {ccis.map(c => (
-        <button key={c.id} onClick={() => abrir(c)} className="card w-full flex items-stretch justify-between gap-3 p-0 overflow-hidden text-left">
-          <div className="bg-sci-red flex items-center justify-center min-w-[4rem] px-2 shrink-0">
-            <span className="font-bold text-white text-sm">{String(c.numero).padStart(2, '0')}</span>
+        <button key={c.id} onClick={() => abrir(c)} className="card w-full flex items-center gap-3 p-2 text-left">
+          <div className="w-36 shrink-0">
+            <IconeCCI numero={c.numero} />
           </div>
-          <div className="flex-1 py-2.5 min-w-0">
+          <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-slate-700">{c.modelo || '—'}</p>
             {c.placa && <p className="text-xs text-slate-400">{c.placa}</p>}
           </div>
