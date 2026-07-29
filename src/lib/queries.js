@@ -102,6 +102,23 @@ export async function fetchDotacaoMangueira(localTipo, localId) {
   return data
 }
 
+// Dotação de todos os CCIs de uma vez — usado pra calcular sobra dos CCIs
+// em RT nas sugestões de realocação (candidatosParaCci em trocasMangueira.js).
+export async function fetchDotacaoMangueiraTodosCcis() {
+  const { data, error } = await supabase
+    .from('dotacao_mangueira')
+    .select('cci_id, tipo_mangueira_id, quantidade_exigida')
+    .eq('local_tipo', 'CCI')
+
+  if (error) throw error
+  const porCci = {}
+  for (const row of data || []) {
+    if (!porCci[row.cci_id]) porCci[row.cci_id] = []
+    porCci[row.cci_id].push(row)
+  }
+  return porCci
+}
+
 export async function fetchMangueiras() {
   const { data, error } = await supabase
     .from('mangueiras')
@@ -513,6 +530,8 @@ export const HANDLERS_FILA = {
   excluirRegistroAdmin: _excluirRegistroAdmin,
   definirTrocaPlanejada: _definirTrocaPlanejada,
   cancelarTrocaPlanejada: _cancelarTrocaPlanejada,
+  definirTrocaMangueiraPlanejada: _definirTrocaMangueiraPlanejada,
+  cancelarTrocaMangueiraPlanejada: _cancelarTrocaMangueiraPlanejada,
   salvarDotacaoMangueira: _salvarDotacaoMangueira,
   registrarVistoriaMangueira: _registrarVistoriaMangueira,
   registrarVistoriaHidrante: _registrarVistoriaHidrante,
@@ -683,4 +702,45 @@ async function _cancelarTrocaPlanejada(id) {
 
 export async function cancelarTrocaPlanejada(id) {
   return executarOuEnfileirar('cancelarTrocaPlanejada', id, _cancelarTrocaPlanejada)
+}
+
+// ────────────────────────────────────────────────────────────────
+// Plano de realocação de mangueira pra um CCI em linha (setor
+// Hidrantes/Mangueiras) — mesmo espírito acima, sem reciprocidade. Ver
+// trocas_mangueira_planejadas e o trigger de limpeza automática no schema.
+// ────────────────────────────────────────────────────────────────
+
+export async function fetchTrocasMangueiraPlanejadas() {
+  const { data, error } = await supabase
+    .from('trocas_mangueira_planejadas')
+    .select(`
+      *,
+      cci_destino:ccis(id, numero, placa),
+      mangueira:mangueiras(id, identificacao, tipo_mangueira_id, cci_id, ccis(numero, placa))
+    `)
+
+  if (error) throw error
+  return data || []
+}
+
+async function _definirTrocaMangueiraPlanejada({ cciDestinoId, mangueiraId, responsavel }) {
+  const { error } = await supabase.from('trocas_mangueira_planejadas').insert({
+    cci_destino_id: cciDestinoId,
+    mangueira_id: mangueiraId,
+    definido_por: responsavel
+  })
+  if (error) throw error
+}
+
+export async function definirTrocaMangueiraPlanejada(args) {
+  return executarOuEnfileirar('definirTrocaMangueiraPlanejada', args, _definirTrocaMangueiraPlanejada)
+}
+
+async function _cancelarTrocaMangueiraPlanejada(id) {
+  const { error } = await supabase.from('trocas_mangueira_planejadas').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function cancelarTrocaMangueiraPlanejada(id) {
+  return executarOuEnfileirar('cancelarTrocaMangueiraPlanejada', id, _cancelarTrocaMangueiraPlanejada)
 }

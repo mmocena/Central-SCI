@@ -3,7 +3,7 @@
 // área amarela livre da carroceria (traseira).
 export default function IconeCCI({ numero, className }) {
   return (
-    <svg viewBox="0 0 1000 500" width="100%" height="100%" className={className} xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="184 117 642 312" width="100%" height="100%" className={className} xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="cci-yellowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%" stopColor="#FFDD00"/>

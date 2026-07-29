@@ -862,3 +862,53 @@ begin
     atualizado_em = excluded.atualizado_em;
 end;
 $$;
+
+-- ============================================================
+-- CCI em linha vs reserva técnica + sugestão automática de realocação de
+-- mangueiras — só 2 dos 3 CCIs ficam "em linha" (compõem a
+-- operacionalidade, dotação sempre completa é prioridade); o de reserva
+-- técnica (RT) é quem fica defasado primeiro se faltar mangueira pra
+-- todos. Mangueira de CCI é sempre Tipo 4; mangueira de Hidrante pode ser
+-- Tipo 2 ou 4 — daí o campo aplicavel_a em tipos_mangueira, que já era
+-- texto livre e não dava pra validar com segurança.
+-- ============================================================
+
+alter table ccis add column situacao text not null default 'RT' check (situacao in ('LINHA', 'RT'));
+
+alter table tipos_mangueira add column aplicavel_a text check (aplicavel_a in ('HIDRANTE', 'CCI', 'AMBOS'));
+update tipos_mangueira set aplicavel_a = 'HIDRANTE';
+alter table tipos_mangueira alter column aplicavel_a set not null;
+-- Depois de rodar: abrir cada tipo já cadastrado em "editar" (aba Tipos de
+-- Mangueira) e corrigir o "Aplicável a" (Tipo 4 -> AMBOS, Tipo 2 -> HIDRANTE)
+-- — não dá pra inferir isso com segurança a partir do texto livre existente.
+
+-- Plano de realocação de uma mangueira específica pra um CCI em linha —
+-- só sugestão, não move nada sozinho (mesmo espírito de trocas_planejadas,
+-- mas sem reciprocidade: aqui é sempre unilateral, Depósito ou CCI RT com
+-- sobra -> CCI LINHA). O plano é cumprido (ou fica obsoleto) quando
+-- alguém de fato edita a localização da mangueira no Cadastro — o trigger
+-- abaixo limpa o plano sozinho nesse momento, sem precisar de uma
+-- vistoria nova como gatilho (diferente dos extintores).
+create table trocas_mangueira_planejadas (
+  id uuid primary key default gen_random_uuid(),
+  cci_destino_id uuid not null references ccis(id) on delete cascade,
+  mangueira_id uuid not null unique references mangueiras(id) on delete cascade,
+  definido_por text not null,
+  definido_em timestamptz default now()
+);
+
+create or replace function limpar_troca_mangueira_planejada()
+returns trigger
+language plpgsql
+as $$
+begin
+  delete from trocas_mangueira_planejadas where mangueira_id = new.id;
+  return new;
+end;
+$$;
+
+create trigger trg_limpar_troca_mangueira
+after update of cci_id, hidrante_id, localizacao_tipo on mangueiras
+for each row execute function limpar_troca_mangueira_planejada();
+
+alter publication supabase_realtime add table trocas_mangueira_planejadas;

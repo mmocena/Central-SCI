@@ -6,6 +6,12 @@ import {
 } from '../../lib/queries'
 import { useToast, avisarResultado } from '../../components/Toast'
 import TelaLoginAdmin, { SESSION_KEY } from '../../components/TelaLoginAdmin'
+import AcoesKebab from '../../components/AcoesKebab'
+import ModalConfirmar from '../../components/ModalConfirmar'
+import ModalFormulario from '../../components/ModalFormulario'
+import IconeCaixaHidrante from '../../components/IconeCaixaHidrante'
+import IconeCCI from '../../components/IconeCCI'
+import BadgeSituacaoCci from '../../components/BadgeSituacaoCci'
 
 // Camada 1 do setor Hidrantes/Mangueiras — só cadastro base (sem vistoria,
 // sem exigência/"Planta", sem histórico de movimentação — ver memória
@@ -47,6 +53,15 @@ function labelTipoMangueira(t) {
   return `${t.tipo} — ${t.diametro} — ${t.comprimento}m`
 }
 
+// Mangueira de CCI é sempre Tipo 4, mangueira de Hidrante pode ser Tipo 2
+// ou 4 — filtra pelo aplicavel_a de cada tipo conforme a localização
+// escolhida. Depósito ainda não tem destino definido, mostra todos.
+function tiposCompativeis(tiposMangueira, localizacaoTipo) {
+  if (localizacaoTipo === 'CCI') return tiposMangueira.filter(t => t.aplicavel_a === 'CCI' || t.aplicavel_a === 'AMBOS')
+  if (localizacaoTipo === 'HIDRANTE') return tiposMangueira.filter(t => t.aplicavel_a === 'HIDRANTE' || t.aplicavel_a === 'AMBOS')
+  return tiposMangueira
+}
+
 // Editor de dotação exigida (tipo -> quantidade), usado tanto por
 // Hidrantes quanto por CCIs — só aparece em modo editar, já que precisa de
 // um id real pra salvar via salvar_dotacao_mangueira.
@@ -72,14 +87,26 @@ function DotacaoEditor({ tiposMangueira, dotacao, setDotacao }) {
   )
 }
 
+const TIPO_MANGUEIRA_VAZIO = { tipo: '', diametro: '', comprimento: '', aplicavel_a: '' }
+const OPCOES_APLICAVEL_A = [
+  { valor: 'HIDRANTE', label: 'Hidrante' },
+  { valor: 'CCI', label: 'CCI' },
+  { valor: 'AMBOS', label: 'Ambos' }
+]
+function labelAplicavelA(valor) {
+  return OPCOES_APLICAVEL_A.find(o => o.valor === valor)?.label || valor
+}
+
 function AdminTiposMangueira() {
   const showToast = useToast()
   const [tipos, setTipos] = useState([])
   const [arquivados, setArquivados] = useState([])
-  const [tipo, setTipo] = useState('')
-  const [diametro, setDiametro] = useState('')
-  const [comprimento, setComprimento] = useState('')
+  const [form, setForm] = useState(TIPO_MANGUEIRA_VAZIO)
+  const [salvando, setSalvando] = useState(false)
+  const [editandoId, setEditandoId] = useState(null)
+  const [formAberto, setFormAberto] = useState(false)
   const [verArquivados, setVerArquivados] = useState(false)
+  const [confirmExcluir, setConfirmExcluir] = useState(null)
 
   useEffect(() => { carregar() }, [])
   async function carregar() {
@@ -90,14 +117,40 @@ function AdminTiposMangueira() {
     setTipos(ativos || [])
     setArquivados(inativos || [])
   }
+
+  function novo() {
+    setEditandoId(null)
+    setForm(TIPO_MANGUEIRA_VAZIO)
+    setFormAberto(true)
+  }
+
+  function editar(t) {
+    setEditandoId(t.id)
+    setForm({ tipo: t.tipo, diametro: t.diametro, comprimento: String(t.comprimento), aplicavel_a: t.aplicavel_a })
+    setFormAberto(true)
+  }
+
+  function fecharFormulario() {
+    setFormAberto(false)
+    setEditandoId(null)
+    setForm(TIPO_MANGUEIRA_VAZIO)
+  }
+
   async function salvar() {
-    if (!tipo.trim() || !diametro.trim() || !comprimento) return
+    if (!form.tipo.trim() || !form.diametro.trim() || !form.comprimento) return
+    if (!form.aplicavel_a) return alert('Selecione a quais localizações esse tipo se aplica.')
+    setSalvando(true)
+    const payload = { tipo: form.tipo.trim(), diametro: form.diametro.trim(), comprimento: parseFloat(form.comprimento), aplicavel_a: form.aplicavel_a }
     try {
-      const resultado = await salvarRegistroAdmin({ tabela: 'tipos_mangueira', payload: { tipo: tipo.trim(), diametro: diametro.trim(), comprimento: parseFloat(comprimento) } })
-      setTipo(''); setDiametro(''); setComprimento('')
-      avisarResultado(showToast, resultado, 'Tipo adicionado.')
-      carregar()
-    } catch (e) { alert('Erro: ' + e.message) }
+      const resultado = await salvarRegistroAdmin({ tabela: 'tipos_mangueira', id: editandoId, payload })
+      avisarResultado(showToast, resultado, editandoId ? 'Tipo atualizado.' : 'Tipo adicionado.')
+      fecharFormulario()
+      await carregar()
+    } catch (e) {
+      alert('Erro: ' + e.message)
+    } finally {
+      setSalvando(false)
+    }
   }
   async function arquivar(id) {
     try {
@@ -114,7 +167,6 @@ function AdminTiposMangueira() {
     } catch (e) { alert('Erro: ' + e.message) }
   }
   async function excluir(id) {
-    if (!confirm('Excluir permanentemente? Esta ação não pode ser desfeita.')) return
     try {
       const resultado = await excluirRegistroAdmin({ tabela: 'tipos_mangueira', id })
       avisarResultado(showToast, resultado, 'Tipo excluído.')
@@ -123,35 +175,54 @@ function AdminTiposMangueira() {
   }
 
   return (
-    <div className="space-y-4 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-4 lg:items-start">
-      <div className="card space-y-3">
-        <p className="text-sm font-bold text-sci-text">Novo Tipo de Mangueira</p>
-        <div>
-          <label className="text-xs text-sci-muted">Tipo</label>
-          <input type="text" value={tipo} onChange={e => setTipo(e.target.value)} placeholder="ex: Tipo 1, Tipo 2 (NBR 12779)" className="w-full mt-1" />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="text-xs text-sci-muted">Diâmetro</label>
-            <input type="text" value={diametro} onChange={e => setDiametro(e.target.value)} placeholder='ex: 1 1/2"' className="w-full mt-1" />
+    <div className="space-y-4">
+      <button onClick={novo} className="btn-primary w-full">+ Novo Tipo de Mangueira</button>
+
+      {formAberto && (
+        <ModalFormulario titulo={editandoId ? 'Editar Tipo de Mangueira' : 'Novo Tipo de Mangueira'} onFechar={fecharFormulario}>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-sci-muted">Tipo</label>
+              <input type="text" value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))} placeholder="ex: Tipo 1, Tipo 2 (NBR 12779)" className="w-full mt-1" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-sci-muted">Diâmetro</label>
+                <input type="text" value={form.diametro} onChange={e => setForm(f => ({ ...f, diametro: e.target.value }))} placeholder='ex: 1 1/2"' className="w-full mt-1" />
+              </div>
+              <div>
+                <label className="text-xs text-sci-muted">Comprimento (m)</label>
+                <input type="number" value={form.comprimento} onChange={e => setForm(f => ({ ...f, comprimento: e.target.value }))} placeholder="ex: 15" className="w-full mt-1" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-sci-muted">Aplicável a</label>
+              <div className="grid grid-cols-3 gap-2 mt-1">
+                {OPCOES_APLICAVEL_A.map(o => (
+                  <button key={o.valor} type="button" onClick={() => setForm(f => ({ ...f, aplicavel_a: o.valor }))}
+                    className={`btn-option text-xs ${form.aplicavel_a === o.valor ? 'selected' : ''}`}>
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button onClick={salvar} disabled={salvando} className="btn-primary w-full">
+              {salvando ? 'Salvando...' : editandoId ? 'Salvar Alterações' : 'Adicionar'}
+            </button>
           </div>
-          <div>
-            <label className="text-xs text-sci-muted">Comprimento (m)</label>
-            <input type="number" value={comprimento} onChange={e => setComprimento(e.target.value)} placeholder="ex: 15" className="w-full mt-1" />
-          </div>
-        </div>
-        <button onClick={salvar} className="btn-primary w-full">Adicionar</button>
-      </div>
+        </ModalFormulario>
+      )}
 
       <div className="space-y-4">
         <div className="space-y-2">
           {tipos.map(t => (
-            <div key={t.id} className="card flex items-center justify-between gap-2 py-2.5">
-              <span className="text-sm text-slate-700">{labelTipoMangueira(t)}</span>
-              <div className="flex gap-3 shrink-0">
-                <button onClick={() => arquivar(t.id)} className="text-xs text-slate-400 hover:text-amber-600 transition-colors">Arquivar</button>
-                <button onClick={() => excluir(t.id)} className="text-xs text-slate-400 hover:text-red-600 transition-colors">Excluir</button>
-              </div>
+            <div key={t.id} className="card flex items-center justify-between gap-2 py-2.5 px-3">
+              <span className="text-sm text-slate-700">{labelTipoMangueira(t)} <span className="text-xs text-slate-400">· {labelAplicavelA(t.aplicavel_a)}</span></span>
+              <AcoesKebab acoes={[
+                { label: 'Editar', onClick: () => editar(t) },
+                { label: 'Arquivar', onClick: () => arquivar(t.id) },
+                { label: 'Excluir', destrutivo: true, onClick: () => setConfirmExcluir({ id: t.id, label: labelTipoMangueira(t) }) }
+              ]} />
             </div>
           ))}
         </div>
@@ -164,12 +235,12 @@ function AdminTiposMangueira() {
             {verArquivados && (
               <div className="space-y-2 mt-2">
                 {arquivados.map(t => (
-                  <div key={t.id} className="card flex items-center justify-between gap-2 py-2.5 opacity-50">
+                  <div key={t.id} className="card flex items-center justify-between gap-2 py-2.5 px-3 opacity-50">
                     <span className="text-sm text-slate-500 line-through">{labelTipoMangueira(t)}</span>
-                    <div className="flex gap-3 shrink-0">
-                      <button onClick={() => restaurar(t.id)} className="text-xs text-blue-500 hover:text-blue-700 transition-colors">Restaurar</button>
-                      <button onClick={() => excluir(t.id)} className="text-xs text-slate-400 hover:text-red-600 transition-colors">Excluir</button>
-                    </div>
+                    <AcoesKebab acoes={[
+                      { label: 'Restaurar', onClick: () => restaurar(t.id) },
+                      { label: 'Excluir', destrutivo: true, onClick: () => setConfirmExcluir({ id: t.id, label: labelTipoMangueira(t) }) }
+                    ]} />
                   </div>
                 ))}
               </div>
@@ -177,6 +248,16 @@ function AdminTiposMangueira() {
           </div>
         )}
       </div>
+
+      {confirmExcluir && (
+        <ModalConfirmar
+          titulo="Excluir tipo de mangueira?"
+          mensagem={`Remover "${confirmExcluir.label}" permanentemente. Esta ação não pode ser desfeita.`}
+          textoConfirmar="Excluir"
+          onCancelar={() => setConfirmExcluir(null)}
+          onConfirmar={() => { const id = confirmExcluir.id; setConfirmExcluir(null); excluir(id) }}
+        />
+      )}
     </div>
   )
 }
@@ -192,6 +273,7 @@ function AdminHidrantes() {
   const [salvando, setSalvando] = useState(false)
   const [editandoId, setEditandoId] = useState(null)
   const [formAberto, setFormAberto] = useState(false)
+  const [confirmExcluir, setConfirmExcluir] = useState(null)
 
   useEffect(() => { carregar(); fetchTiposMangueira().then(setTiposMangueira) }, [])
   async function carregar() {
@@ -201,18 +283,24 @@ function AdminHidrantes() {
 
   const edificacoesUnicas = [...new Set(hidrantes.map(h => h.edificacao).filter(Boolean))].sort()
 
-  async function editar(h) {
+  function novo() {
+    setEditandoId(null)
+    setForm(HIDRANTE_VAZIO)
+    setDotacao({})
     setFormAberto(true)
+  }
+
+  async function editar(h) {
     setEditandoId(h.id)
     setForm({ numero: String(h.numero), edificacao: h.edificacao, descricao: h.descricao || '' })
     const dotacaoAtual = await fetchDotacaoMangueira('HIDRANTE', h.id)
     setDotacao(Object.fromEntries(dotacaoAtual.map(d => [d.tipo_mangueira_id, String(d.quantidade_exigida)])))
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    setFormAberto(true)
   }
 
-  function cancelarEdicao() {
-    setEditandoId(null)
+  function fecharFormulario() {
     setFormAberto(false)
+    setEditandoId(null)
     setForm(HIDRANTE_VAZIO)
     setDotacao({})
   }
@@ -234,7 +322,7 @@ function AdminHidrantes() {
         await salvarDotacaoMangueira({ localTipo: 'HIDRANTE', localId: editandoId, itens })
       }
       avisarResultado(showToast, resultado, editandoId ? 'Hidrante atualizado com sucesso.' : 'Hidrante cadastrado com sucesso — abra "editar" pra configurar a dotação.')
-      cancelarEdicao()
+      fecharFormulario()
       await carregar()
     } catch (e) {
       alert('Erro: ' + e.message)
@@ -243,71 +331,88 @@ function AdminHidrantes() {
     }
   }
 
+  async function excluir(id) {
+    try {
+      const resultado = await excluirRegistroAdmin({ tabela: 'hidrantes', id })
+      avisarResultado(showToast, resultado, 'Hidrante excluído.')
+      await carregar()
+    } catch (e) {
+      alert('Erro: ' + e.message)
+    }
+  }
+
   return (
     <div className="space-y-4">
-      {!formAberto && (
-        <button onClick={() => setFormAberto(true)} className="btn-primary w-full">+ Novo Hidrante</button>
-      )}
+      <button onClick={novo} className="btn-primary w-full">+ Novo Hidrante</button>
 
       {formAberto && (
-        <div className="card space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-bold text-sci-text">{editandoId ? 'Editar Hidrante' : 'Novo Hidrante'}</p>
-            <button onClick={cancelarEdicao} className="text-xs text-slate-400 underline">Cancelar</button>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-slate-400">Número *</label>
-              <input type="number" value={form.numero} onChange={e => setForm(f => ({ ...f, numero: e.target.value }))} className="w-full mt-1" />
+        <ModalFormulario titulo={editandoId ? 'Editar Hidrante' : 'Novo Hidrante'} onFechar={fecharFormulario}>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-slate-400">Número *</label>
+                <input type="number" value={form.numero} onChange={e => setForm(f => ({ ...f, numero: e.target.value }))} className="w-full mt-1" />
+              </div>
+              <div>
+                <label className="text-xs text-sci-muted">Edificação *</label>
+                <input type="text" list="dl-edificacoes-hidrante" value={form.edificacao} onChange={e => setForm(f => ({ ...f, edificacao: e.target.value }))} className="w-full mt-1" />
+                <datalist id="dl-edificacoes-hidrante">
+                  {edificacoesUnicas.map(e => <option key={e} value={e} />)}
+                </datalist>
+              </div>
             </div>
             <div>
-              <label className="text-xs text-sci-muted">Edificação *</label>
-              <input type="text" list="dl-edificacoes-hidrante" value={form.edificacao} onChange={e => setForm(f => ({ ...f, edificacao: e.target.value }))} className="w-full mt-1" />
-              <datalist id="dl-edificacoes-hidrante">
-                {edificacoesUnicas.map(e => <option key={e} value={e} />)}
-              </datalist>
+              <label className="text-xs text-sci-muted">Descrição / Localização</label>
+              <input type="text" value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))}
+                placeholder="ex: Próximo à guarita" className="w-full mt-1" />
             </div>
-          </div>
-          <div>
-            <label className="text-xs text-sci-muted">Descrição / Localização</label>
-            <input type="text" value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))}
-              placeholder="ex: Próximo à guarita" className="w-full mt-1" />
-          </div>
 
-          {editandoId ? (
-            <DotacaoEditor tiposMangueira={tiposMangueira} dotacao={dotacao} setDotacao={setDotacao} />
-          ) : (
-            <p className="text-xs text-slate-400">A dotação de mangueiras é configurada depois de salvar, em "editar".</p>
-          )}
+            {editandoId ? (
+              <DotacaoEditor tiposMangueira={tiposCompativeis(tiposMangueira, 'HIDRANTE')} dotacao={dotacao} setDotacao={setDotacao} />
+            ) : (
+              <p className="text-xs text-slate-400">A dotação de mangueiras é configurada depois de salvar, em "editar".</p>
+            )}
 
-          <button onClick={salvar} disabled={salvando} className="btn-primary w-full">
-            {salvando ? 'Salvando...' : editandoId ? 'Salvar Alterações' : 'Adicionar Hidrante'}
-          </button>
-        </div>
+            <button onClick={salvar} disabled={salvando} className="btn-primary w-full">
+              {salvando ? 'Salvando...' : editandoId ? 'Salvar Alterações' : 'Adicionar Hidrante'}
+            </button>
+          </div>
+        </ModalFormulario>
       )}
 
       <div className="space-y-2">
         <p className="text-xs text-sci-muted font-medium uppercase tracking-wider">{hidrantes.length} hidrantes cadastrados</p>
         {hidrantes.map(h => (
-          <div key={h.id} className={`card flex items-stretch justify-between gap-3 p-0 overflow-hidden ${editandoId === h.id ? 'ring-2 ring-sci-red' : ''}`}>
-            <div className="bg-sci-red flex items-center justify-center min-w-[4rem] px-2 shrink-0 self-stretch">
-              <span className="font-bold text-white text-sm">{String(h.numero).padStart(2, '0')}</span>
+          <div key={h.id} className="card flex items-center gap-3 py-2 px-3">
+            <div className="w-16 shrink-0">
+              <IconeCaixaHidrante numero={h.numero} />
             </div>
-            <div className="flex-1 py-2.5 min-w-0">
+            <div className="flex-1 min-w-0">
               <p className="text-xs font-medium text-slate-700 leading-tight">{h.edificacao}</p>
               {h.descricao && <p className="text-xs text-slate-400 leading-tight mt-0.5">{h.descricao}</p>}
             </div>
-            <div className="flex items-center pr-3 shrink-0">
-              <button onClick={() => editar(h)} className="text-xs text-slate-400 hover:text-sci-red underline">editar</button>
-            </div>
+            <AcoesKebab acoes={[
+              { label: 'Editar', onClick: () => editar(h) },
+              { label: 'Excluir', destrutivo: true, onClick: () => setConfirmExcluir({ id: h.id, label: `Hidrante ${String(h.numero).padStart(2, '0')} — ${h.edificacao}` }) }
+            ]} />
           </div>
         ))}
       </div>
+
+      {confirmExcluir && (
+        <ModalConfirmar
+          titulo="Excluir hidrante?"
+          mensagem={`Remover "${confirmExcluir.label}" permanentemente. Esta ação não pode ser desfeita.`}
+          textoConfirmar="Excluir"
+          onCancelar={() => setConfirmExcluir(null)}
+          onConfirmar={() => { const id = confirmExcluir.id; setConfirmExcluir(null); excluir(id) }}
+        />
+      )}
     </div>
   )
 }
 
-const CCI_VAZIO = { numero: '', placa: '', modelo: '' }
+const CCI_VAZIO = { numero: '', placa: '', modelo: '', situacao: 'RT' }
 
 function AdminCcis() {
   const showToast = useToast()
@@ -318,6 +423,7 @@ function AdminCcis() {
   const [salvando, setSalvando] = useState(false)
   const [editandoId, setEditandoId] = useState(null)
   const [formAberto, setFormAberto] = useState(false)
+  const [confirmExcluir, setConfirmExcluir] = useState(null)
 
   useEffect(() => { carregar(); fetchTiposMangueira().then(setTiposMangueira) }, [])
   async function carregar() {
@@ -325,18 +431,24 @@ function AdminCcis() {
     setCcis(data || [])
   }
 
-  async function editar(c) {
+  function novo() {
+    setEditandoId(null)
+    setForm(CCI_VAZIO)
+    setDotacao({})
     setFormAberto(true)
-    setEditandoId(c.id)
-    setForm({ numero: String(c.numero), placa: c.placa || '', modelo: c.modelo || '' })
-    const dotacaoAtual = await fetchDotacaoMangueira('CCI', c.id)
-    setDotacao(Object.fromEntries(dotacaoAtual.map(d => [d.tipo_mangueira_id, String(d.quantidade_exigida)])))
-    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  function cancelarEdicao() {
-    setEditandoId(null)
+  async function editar(c) {
+    setEditandoId(c.id)
+    setForm({ numero: String(c.numero), placa: c.placa || '', modelo: c.modelo || '', situacao: c.situacao || 'RT' })
+    const dotacaoAtual = await fetchDotacaoMangueira('CCI', c.id)
+    setDotacao(Object.fromEntries(dotacaoAtual.map(d => [d.tipo_mangueira_id, String(d.quantidade_exigida)])))
+    setFormAberto(true)
+  }
+
+  function fecharFormulario() {
     setFormAberto(false)
+    setEditandoId(null)
     setForm(CCI_VAZIO)
     setDotacao({})
   }
@@ -347,7 +459,8 @@ function AdminCcis() {
     const payload = {
       numero: parseInt(form.numero),
       placa: form.placa.trim() || null,
-      modelo: form.modelo.trim() || null
+      modelo: form.modelo.trim() || null,
+      situacao: form.situacao
     }
     try {
       const resultado = await salvarRegistroAdmin({ tabela: 'ccis', id: editandoId, payload })
@@ -358,7 +471,7 @@ function AdminCcis() {
         await salvarDotacaoMangueira({ localTipo: 'CCI', localId: editandoId, itens })
       }
       avisarResultado(showToast, resultado, editandoId ? 'CCI atualizado com sucesso.' : 'CCI cadastrado com sucesso — abra "editar" pra configurar a dotação.')
-      cancelarEdicao()
+      fecharFormulario()
       await carregar()
     } catch (e) {
       alert('Erro: ' + e.message)
@@ -367,62 +480,95 @@ function AdminCcis() {
     }
   }
 
+  async function excluir(id) {
+    try {
+      const resultado = await excluirRegistroAdmin({ tabela: 'ccis', id })
+      avisarResultado(showToast, resultado, 'CCI excluído.')
+      await carregar()
+    } catch (e) {
+      alert('Erro: ' + e.message)
+    }
+  }
+
   return (
     <div className="space-y-4">
-      {!formAberto && (
-        <button onClick={() => setFormAberto(true)} className="btn-primary w-full">+ Novo CCI</button>
-      )}
+      <button onClick={novo} className="btn-primary w-full">+ Novo CCI</button>
 
       {formAberto && (
-        <div className="card space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-bold text-sci-text">{editandoId ? 'Editar CCI' : 'Novo CCI'}</p>
-            <button onClick={cancelarEdicao} className="text-xs text-slate-400 underline">Cancelar</button>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-slate-400">Número *</label>
-              <input type="number" value={form.numero} onChange={e => setForm(f => ({ ...f, numero: e.target.value }))} className="w-full mt-1" />
+        <ModalFormulario titulo={editandoId ? 'Editar CCI' : 'Novo CCI'} onFechar={fecharFormulario}>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-slate-400">Número *</label>
+                <input type="number" value={form.numero} onChange={e => setForm(f => ({ ...f, numero: e.target.value }))} className="w-full mt-1" />
+              </div>
+              <div>
+                <label className="text-xs text-sci-muted">Placa</label>
+                <input type="text" value={form.placa} onChange={e => setForm(f => ({ ...f, placa: e.target.value }))} className="w-full mt-1" />
+              </div>
             </div>
             <div>
-              <label className="text-xs text-sci-muted">Placa</label>
-              <input type="text" value={form.placa} onChange={e => setForm(f => ({ ...f, placa: e.target.value }))} className="w-full mt-1" />
+              <label className="text-xs text-sci-muted">Modelo</label>
+              <input type="text" value={form.modelo} onChange={e => setForm(f => ({ ...f, modelo: e.target.value }))} className="w-full mt-1" />
             </div>
-          </div>
-          <div>
-            <label className="text-xs text-sci-muted">Modelo</label>
-            <input type="text" value={form.modelo} onChange={e => setForm(f => ({ ...f, modelo: e.target.value }))} className="w-full mt-1" />
-          </div>
+            <div>
+              <label className="text-xs text-sci-muted">Situação</label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <button type="button" onClick={() => setForm(f => ({ ...f, situacao: 'LINHA' }))}
+                  className={`btn-option text-sm font-semibold ${form.situacao === 'LINHA' ? 'selected' : ''}`}>
+                  Em Linha
+                </button>
+                <button type="button" onClick={() => setForm(f => ({ ...f, situacao: 'RT' }))}
+                  className={`btn-option text-sm font-semibold ${form.situacao === 'RT' ? 'selected' : ''}`}>
+                  Reserva Técnica
+                </button>
+              </div>
+            </div>
 
-          {editandoId ? (
-            <DotacaoEditor tiposMangueira={tiposMangueira} dotacao={dotacao} setDotacao={setDotacao} />
-          ) : (
-            <p className="text-xs text-slate-400">A dotação de mangueiras é configurada depois de salvar, em "editar".</p>
-          )}
+            {editandoId ? (
+              <DotacaoEditor tiposMangueira={tiposCompativeis(tiposMangueira, 'CCI')} dotacao={dotacao} setDotacao={setDotacao} />
+            ) : (
+              <p className="text-xs text-slate-400">A dotação de mangueiras é configurada depois de salvar, em "editar".</p>
+            )}
 
-          <button onClick={salvar} disabled={salvando} className="btn-primary w-full">
-            {salvando ? 'Salvando...' : editandoId ? 'Salvar Alterações' : 'Adicionar CCI'}
-          </button>
-        </div>
+            <button onClick={salvar} disabled={salvando} className="btn-primary w-full">
+              {salvando ? 'Salvando...' : editandoId ? 'Salvar Alterações' : 'Adicionar CCI'}
+            </button>
+          </div>
+        </ModalFormulario>
       )}
 
       <div className="space-y-2">
         <p className="text-xs text-sci-muted font-medium uppercase tracking-wider">{ccis.length} CCIs cadastrados</p>
         {ccis.map(c => (
-          <div key={c.id} className={`card flex items-stretch justify-between gap-3 p-0 overflow-hidden ${editandoId === c.id ? 'ring-2 ring-sci-red' : ''}`}>
-            <div className="bg-sci-red flex items-center justify-center min-w-[4rem] px-2 shrink-0 self-stretch">
-              <span className="font-bold text-white text-sm">{String(c.numero).padStart(2, '0')}</span>
+          <div key={c.id} className="card flex items-center gap-5 py-2 px-3">
+            <div className="w-24 py-1 shrink-0">
+              <IconeCCI numero={c.numero} />
             </div>
-            <div className="flex-1 py-2.5 min-w-0">
+            <div className="flex-1 min-w-0">
               <p className="text-xs font-medium text-slate-700 leading-tight">{c.modelo || '—'}</p>
               {c.placa && <p className="text-xs text-slate-400 leading-tight mt-0.5">{c.placa}</p>}
             </div>
-            <div className="flex items-center pr-3 shrink-0">
-              <button onClick={() => editar(c)} className="text-xs text-slate-400 hover:text-sci-red underline">editar</button>
+            <div className="flex items-center gap-2 shrink-0">
+              <BadgeSituacaoCci situacao={c.situacao} />
+              <AcoesKebab acoes={[
+                { label: 'Editar', onClick: () => editar(c) },
+                { label: 'Excluir', destrutivo: true, onClick: () => setConfirmExcluir({ id: c.id, label: `CCI ${String(c.numero).padStart(2, '0')}${c.placa ? ` — ${c.placa}` : ''}` }) }
+              ]} />
             </div>
           </div>
         ))}
       </div>
+
+      {confirmExcluir && (
+        <ModalConfirmar
+          titulo="Excluir CCI?"
+          mensagem={`Remover "${confirmExcluir.label}" permanentemente. Esta ação não pode ser desfeita.`}
+          textoConfirmar="Excluir"
+          onCancelar={() => setConfirmExcluir(null)}
+          onConfirmar={() => { const id = confirmExcluir.id; setConfirmExcluir(null); excluir(id) }}
+        />
+      )}
     </div>
   )
 }
@@ -439,6 +585,7 @@ function AdminMangueirasTab() {
   const [salvando, setSalvando] = useState(false)
   const [editandoId, setEditandoId] = useState(null)
   const [formAberto, setFormAberto] = useState(false)
+  const [confirmExcluir, setConfirmExcluir] = useState(null)
 
   useEffect(() => {
     carregar()
@@ -449,14 +596,19 @@ function AdminMangueirasTab() {
   async function carregar() {
     const { data } = await supabase
       .from('mangueiras')
-      .select('*, tipos_mangueira(diametro, comprimento), hidrantes(numero, edificacao), ccis(numero, placa)')
+      .select('*, tipos_mangueira(tipo, diametro, comprimento), hidrantes(numero, edificacao), ccis(numero, placa)')
       .eq('ativo', true)
       .order('identificacao')
     setMangueiras(data || [])
   }
 
-  function editar(m) {
+  function novo() {
+    setEditandoId(null)
+    setForm(MANGUEIRA_VAZIA)
     setFormAberto(true)
+  }
+
+  function editar(m) {
     setEditandoId(m.id)
     setForm({
       identificacao: m.identificacao,
@@ -466,13 +618,23 @@ function AdminMangueirasTab() {
       cci_id: m.cci_id || '',
       validade_teste_hidrostatico: m.validade_teste_hidrostatico || ''
     })
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    setFormAberto(true)
   }
 
-  function cancelarEdicao() {
+  function fecharFormulario() {
     setEditandoId(null)
     setFormAberto(false)
     setForm(MANGUEIRA_VAZIA)
+  }
+
+  async function excluir(id) {
+    try {
+      const resultado = await excluirRegistroAdmin({ tabela: 'mangueiras', id })
+      avisarResultado(showToast, resultado, 'Mangueira excluída.')
+      await carregar()
+    } catch (e) {
+      alert('Erro: ' + e.message)
+    }
   }
 
   async function salvar() {
@@ -500,7 +662,7 @@ function AdminMangueirasTab() {
     }
     setSalvando(false)
     avisarResultado(showToast, resultado, editandoId ? 'Mangueira atualizada com sucesso.' : 'Mangueira cadastrada com sucesso.')
-    cancelarEdicao()
+    fecharFormulario()
     await carregar()
   }
 
@@ -512,17 +674,11 @@ function AdminMangueirasTab() {
 
   return (
     <div className="space-y-4">
-      {!formAberto && (
-        <button onClick={() => setFormAberto(true)} className="btn-primary w-full">+ Nova Mangueira</button>
-      )}
+      <button onClick={novo} className="btn-primary w-full">+ Nova Mangueira</button>
 
       {formAberto && (
-        <div className="card space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-bold text-sci-text">{editandoId ? 'Editar Mangueira' : 'Nova Mangueira'}</p>
-            <button onClick={cancelarEdicao} className="text-xs text-slate-400 underline">Cancelar</button>
-          </div>
-
+        <ModalFormulario titulo={editandoId ? 'Editar Mangueira' : 'Nova Mangueira'} onFechar={fecharFormulario}>
+          <div className="space-y-3">
           <div>
             <label className="text-xs text-sci-muted">Identificação (tag/nº de série) *</label>
             <input type="text" value={form.identificacao} onChange={e => setForm(f => ({ ...f, identificacao: e.target.value }))} className="w-full mt-1" />
@@ -530,18 +686,20 @@ function AdminMangueirasTab() {
 
           <div className="space-y-1">
             <label className="text-xs text-sci-muted">Tipo *</label>
-            {tiposMangueira.length === 0 ? (
-              <p className="text-xs text-slate-400 italic">Cadastre um tipo de mangueira primeiro.</p>
+            {(() => { const tiposFiltrados = tiposCompativeis(tiposMangueira, form.localizacao_tipo); return tiposFiltrados.length === 0 ? (
+              <p className="text-xs text-slate-400 italic">
+                {tiposMangueira.length === 0 ? 'Cadastre um tipo de mangueira primeiro.' : 'Nenhum tipo cadastrado se aplica a essa localização.'}
+              </p>
             ) : (
               <div className="flex flex-wrap gap-2">
-                {tiposMangueira.map(t => (
+                {tiposFiltrados.map(t => (
                   <button key={t.id} type="button" onClick={() => setForm(f => ({ ...f, tipo_mangueira_id: t.id }))}
                     className={`btn-option text-xs ${form.tipo_mangueira_id === t.id ? 'selected' : ''}`}>
                     {labelTipoMangueira(t)}
                   </button>
                 ))}
               </div>
-            )}
+            ) })()}
           </div>
 
           <div className="space-y-1">
@@ -549,7 +707,7 @@ function AdminMangueirasTab() {
             <div className="flex gap-2">
               {['HIDRANTE', 'CCI', 'DEPOSITO'].map(v => (
                 <button key={v} type="button"
-                  onClick={() => setForm(f => ({ ...f, localizacao_tipo: v, hidrante_id: '', cci_id: '' }))}
+                  onClick={() => setForm(f => ({ ...f, localizacao_tipo: v, hidrante_id: '', cci_id: '', tipo_mangueira_id: '' }))}
                   className={`btn-option flex-1 text-xs ${form.localizacao_tipo === v ? 'selected' : ''}`}>
                   {v === 'HIDRANTE' ? 'Hidrante' : v === 'CCI' ? 'CCI' : 'Depósito'}
                 </button>
@@ -587,16 +745,20 @@ function AdminMangueirasTab() {
           <button onClick={salvar} disabled={salvando} className="btn-primary w-full">
             {salvando ? 'Salvando...' : editandoId ? 'Salvar Alterações' : 'Adicionar Mangueira'}
           </button>
-        </div>
+          </div>
+        </ModalFormulario>
       )}
 
       <div className="space-y-2">
         <p className="text-xs text-sci-muted font-medium uppercase tracking-wider">{mangueiras.length} mangueiras cadastradas</p>
         {mangueiras.map(m => (
-          <div key={m.id} className={`card space-y-1 ${editandoId === m.id ? 'ring-2 ring-sci-red' : ''}`}>
+          <div key={m.id} className="card space-y-1 px-3">
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-semibold text-slate-700">{m.identificacao}</span>
-              <button onClick={() => editar(m)} className="text-xs text-slate-400 hover:text-sci-red underline shrink-0">editar</button>
+              <AcoesKebab acoes={[
+                { label: 'Editar', onClick: () => editar(m) },
+                { label: 'Excluir', destrutivo: true, onClick: () => setConfirmExcluir({ id: m.id, label: m.identificacao }) }
+              ]} />
             </div>
             <p className="text-xs text-slate-500">
               {m.tipos_mangueira ? labelTipoMangueira(m.tipos_mangueira) : '—'} · {labelLocalizacao(m)}
@@ -604,6 +766,16 @@ function AdminMangueirasTab() {
           </div>
         ))}
       </div>
+
+      {confirmExcluir && (
+        <ModalConfirmar
+          titulo="Excluir mangueira?"
+          mensagem={`Remover "${confirmExcluir.label}" permanentemente. Esta ação não pode ser desfeita.`}
+          textoConfirmar="Excluir"
+          onCancelar={() => setConfirmExcluir(null)}
+          onConfirmar={() => { const id = confirmExcluir.id; setConfirmExcluir(null); excluir(id) }}
+        />
+      )}
     </div>
   )
 }

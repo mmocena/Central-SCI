@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react'
+import { supabase } from '../../lib/supabase'
 import {
-  fetchHidrantes, fetchCcis, fetchMangueiras, fetchDotacaoMangueira,
+  fetchHidrantes, fetchCcis, fetchMangueiras, fetchDotacaoMangueira, fetchDotacaoMangueiraTodosCcis,
   fetchFatoresIntegridadeMangueira, fetchFatoresEsguicho, fetchFatoresChaveMangueira, fetchFatoresIntegridadeCaixaHidrante,
   fetchFatoresSinalizacao,
+  fetchTrocasMangueiraPlanejadas, definirTrocaMangueiraPlanejada, cancelarTrocaMangueiraPlanejada,
   registrarVistoriaMangueira, registrarVistoriaHidrante, registrarVistoriaCci
 } from '../../lib/queries'
+import { candidatosParaCci, trocasPlanejadasParaCci } from '../../lib/trocasMangueira'
 import FatorChips, { descricoesFatores } from '../../components/FatorChips'
 import IconeCCI from '../../components/IconeCCI'
+import IconeCaixaHidrante from '../../components/IconeCaixaHidrante'
+import BadgeSituacaoCci from '../../components/BadgeSituacaoCci'
 import { calcularConformidadeMangueira, textoObservacaoAutomaticaMangueira, validadeHidrostaticaVencida } from '../../lib/conformidadeMangueira'
 import { useToast } from '../../components/Toast'
 
@@ -72,20 +77,74 @@ export default function Vistoria() {
 
 // Linha de comparação "presente × exigido" por tipo de mangueira — só
 // exibição, não editável aqui (mover mangueira de lugar é cadastro).
-function ComparacaoDotacao({ dotacao, mangueiras }) {
+// Sugestão de realocação de mangueira — só aparece pra CCI em LINHA com
+// dotação incompleta, mesmo espírito de SugestoesTroca.jsx (extintores),
+// mas sem reciprocidade: candidatosParaCci já vem em ordem de prioridade
+// (Depósito antes de CCI RT com sobra), o primeiro é o recomendado.
+function SugestaoRealocacaoMangueira({ cci, tipoMangueiraId, todosCcis, todasMangueiras, dotacaoPorCci, trocasPlanejadas, responsavel, processando, onDefinir }) {
+  const candidatos = candidatosParaCci({ cciDestinoId: cci.id, tipoMangueiraId, todosCcis, todasMangueiras, dotacaoPorCci, trocasPlanejadas })
+  if (candidatos.length === 0) {
+    return <p className="text-xs text-slate-400 italic">Sem mangueira disponível pra realocar no momento.</p>
+  }
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] text-slate-400">Sugestões de realocação:</p>
+      {candidatos.map((c, i) => (
+        <button key={c.mangueira.id}
+          onClick={() => onDefinir(cci, c, responsavel)}
+          disabled={processando === c.mangueira.id}
+          className="w-full flex items-center justify-between gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 text-left hover:border-slate-300 transition-colors disabled:opacity-40">
+          <span className="min-w-0">
+            <p className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-semibold text-slate-700">{c.mangueira.identificacao}</span>
+              {i === 0 && <span className="text-[10px] font-bold text-green-600">RECOMENDADO</span>}
+            </p>
+            <p className="text-xs text-slate-600">{c.tipo === 'deposito' ? 'Depósito' : `CCI ${String(c.cciOrigem.numero).padStart(2, '0')} (RT)`}</p>
+          </span>
+          <span className="text-xs font-medium text-sci-red shrink-0">{processando === c.mangueira.id ? 'Definindo...' : 'Definir'}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ComparacaoDotacao({ dotacao, mangueiras, cci, todosCcis, todasMangueiras, dotacaoPorCci, trocasPlanejadas, responsavel, processando, onDefinir, onCancelar }) {
   if (dotacao.length === 0) return null
   const contagem = {}
   mangueiras.forEach(m => { contagem[m.tipo_mangueira_id] = (contagem[m.tipo_mangueira_id] || 0) + 1 })
   return (
-    <div className="space-y-1">
+    <div className="space-y-3">
       <p className="text-xs text-sci-muted font-medium">Dotação de mangueiras</p>
       {dotacao.map(d => {
         const presente = contagem[d.tipo_mangueira_id] || 0
         const ok = presente >= d.quantidade_exigida
+        const planos = trocasPlanejadasParaCci(trocasPlanejadas, cci.id).filter(t => t.mangueira?.tipo_mangueira_id === d.tipo_mangueira_id)
+        const faltamRestante = Math.max(0, d.quantidade_exigida - presente - planos.length)
         return (
-          <div key={d.id} className="flex items-center justify-between text-sm">
-            <span className="text-slate-600">{labelTipoMangueira(d.tipos_mangueira)}</span>
-            <span className={ok ? 'text-green-600 font-medium' : 'text-sci-red font-semibold'}>{presente} / {d.quantidade_exigida}</span>
+          <div key={d.id} className="space-y-1.5">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-600">{labelTipoMangueira(d.tipos_mangueira)}</span>
+              <span className={ok ? 'text-green-600 font-medium' : 'text-sci-red font-semibold'}>{presente} / {d.quantidade_exigida}</span>
+            </div>
+            {planos.map(plano => (
+              <div key={plano.id} className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                <span className="text-xs text-slate-600">
+                  Planejado: <strong className="text-slate-700">{plano.mangueira?.identificacao}</strong>
+                  {plano.mangueira?.ccis ? ` (CCI ${String(plano.mangueira.ccis.numero).padStart(2, '0')})` : ' (Depósito)'}
+                </span>
+                <button onClick={() => onCancelar(plano.id)} disabled={processando === plano.id}
+                  className="text-xs text-sci-red font-medium shrink-0 disabled:opacity-40">
+                  {processando === plano.id ? 'Desfazendo...' : 'Desfazer'}
+                </button>
+              </div>
+            ))}
+            {!ok && cci.situacao === 'LINHA' && faltamRestante > 0 && (
+              <SugestaoRealocacaoMangueira
+                cci={cci} tipoMangueiraId={d.tipo_mangueira_id}
+                todosCcis={todosCcis} todasMangueiras={todasMangueiras} dotacaoPorCci={dotacaoPorCci} trocasPlanejadas={trocasPlanejadas}
+                responsavel={responsavel} processando={processando} onDefinir={onDefinir}
+              />
+            )}
           </div>
         )
       })}
@@ -320,11 +379,11 @@ function AbaHidrantes({ responsavel, bloqueado }) {
   return (
     <div className="space-y-2">
       {hidrantes.map(h => (
-        <button key={h.id} onClick={() => abrir(h)} className="card w-full flex items-stretch justify-between gap-3 p-0 overflow-hidden text-left">
-          <div className="bg-sci-red flex items-center justify-center min-w-[4rem] px-2 shrink-0">
-            <span className="font-bold text-white text-sm">{String(h.numero).padStart(2, '0')}</span>
+        <button key={h.id} onClick={() => abrir(h)} className="card w-full flex items-center gap-3 py-2 px-3 text-left">
+          <div className="w-16 shrink-0">
+            <IconeCaixaHidrante numero={h.numero} />
           </div>
-          <div className="flex-1 py-2.5 min-w-0">
+          <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-slate-700">{h.edificacao}</p>
             {h.descricao && <p className="text-xs text-slate-400">{h.descricao}</p>}
           </div>
@@ -346,18 +405,50 @@ function AbaCcis({ responsavel, bloqueado }) {
   const [observacoes, setObservacoes] = useState('')
   const [enviando, setEnviando] = useState(false)
 
+  // Dados de todos os CCIs/mangueiras/dotação — usados só pra calcular as
+  // sugestões de realocação (candidatosParaCci precisa enxergar além do
+  // CCI selecionado, pra achar sobra em outro CCI RT).
+  const [todasMangueiras, setTodasMangueiras] = useState([])
+  const [dotacaoPorCci, setDotacaoPorCci] = useState({})
+  const [trocasPlanejadas, setTrocasPlanejadas] = useState([])
+  const [processando, setProcessando] = useState(null)
+
   useEffect(() => {
-    fetchCcis().then(setCcis)
-    fetchFatoresIntegridadeMangueira().then(setFatoresIntegridade)
+    carregar()
+    const channel = supabase
+      .channel('vistoria-ccis-trocas-mangueira')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trocas_mangueira_planejadas' }, recarregarTrocas)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mangueiras' }, carregar)
+      .subscribe()
+    return () => supabase.removeChannel(channel)
   }, [])
+
+  async function carregar() {
+    const [ccisData, fatoresData, mangueirasData, dotacaoData, trocasData] = await Promise.all([
+      fetchCcis(),
+      fetchFatoresIntegridadeMangueira(),
+      fetchMangueiras(),
+      fetchDotacaoMangueiraTodosCcis(),
+      fetchTrocasMangueiraPlanejadas()
+    ])
+    setCcis(ccisData)
+    setFatoresIntegridade(fatoresData)
+    setTodasMangueiras(mangueirasData)
+    setDotacaoPorCci(dotacaoData)
+    setTrocasPlanejadas(trocasData)
+  }
+
+  async function recarregarTrocas() {
+    setTrocasPlanejadas(await fetchTrocasMangueiraPlanejadas())
+  }
 
   async function abrir(c) {
     setSelecionado(c)
-    const [todasMangueiras, dotacaoAtual] = await Promise.all([
+    const [todasMangueirasAtual, dotacaoAtual] = await Promise.all([
       fetchMangueiras(),
       fetchDotacaoMangueira('CCI', c.id)
     ])
-    const mangueirasDoCci = todasMangueiras.filter(m => m.cci_id === c.id)
+    const mangueirasDoCci = todasMangueirasAtual.filter(m => m.cci_id === c.id)
     setMangueiras(mangueirasDoCci)
     setDotacao(dotacaoAtual)
     setEstadoMangueiras(Object.fromEntries(mangueirasDoCci.map(m => [m.id, { ...ESTADO_MANGUEIRA_VAZIO }])))
@@ -366,6 +457,43 @@ function AbaCcis({ responsavel, bloqueado }) {
   }
 
   function fechar() { setSelecionado(null) }
+
+  async function handleDefinir(cciDestino, candidato, responsavelAtual) {
+    if (!responsavelAtual) {
+      showToast('Informe seu nome antes de definir uma realocação.', 'erro')
+      return
+    }
+    setProcessando(candidato.mangueira.id)
+    try {
+      const resultado = await definirTrocaMangueiraPlanejada({ cciDestinoId: cciDestino.id, mangueiraId: candidato.mangueira.id, responsavel: responsavelAtual })
+      showToast(
+        resultado.queued ? 'Sem conexão — será enviado automaticamente ao reconectar.' : 'Realocação definida.',
+        resultado.queued ? 'aviso' : 'sucesso'
+      )
+      await recarregarTrocas()
+    } catch (e) {
+      showToast('Erro ao definir realocação — talvez essa mangueira já tenha sido escolhida por outro CCI. ' + e.message, 'erro')
+      await recarregarTrocas()
+    } finally {
+      setProcessando(null)
+    }
+  }
+
+  async function handleCancelar(id) {
+    setProcessando(id)
+    try {
+      const resultado = await cancelarTrocaMangueiraPlanejada(id)
+      showToast(
+        resultado.queued ? 'Sem conexão — será enviado automaticamente ao reconectar.' : 'Realocação desfeita.',
+        resultado.queued ? 'aviso' : 'sucesso'
+      )
+      await recarregarTrocas()
+    } catch (e) {
+      showToast('Erro: ' + e.message, 'erro')
+    } finally {
+      setProcessando(null)
+    }
+  }
 
   async function registrar() {
     if (!responsavel) return alert('Informe seu nome antes de registrar.')
@@ -391,11 +519,16 @@ function AbaCcis({ responsavel, bloqueado }) {
     return (
       <div className="card space-y-4">
         <div className="flex items-center justify-between">
-          <p className="text-sm font-bold text-sci-text">CCI {String(selecionado.numero).padStart(2, '0')}{selecionado.placa ? ` — ${selecionado.placa}` : ''}</p>
+          <p className="text-sm font-bold text-sci-text flex items-center gap-1.5">
+            CCI {String(selecionado.numero).padStart(2, '0')}{selecionado.placa ? ` — ${selecionado.placa}` : ''}
+            <BadgeSituacaoCci situacao={selecionado.situacao} />
+          </p>
           <button onClick={fechar} className="text-xs text-slate-400 underline">Cancelar</button>
         </div>
 
-        <ComparacaoDotacao dotacao={dotacao} mangueiras={mangueiras} />
+        <ComparacaoDotacao dotacao={dotacao} mangueiras={mangueiras} cci={selecionado}
+          todosCcis={ccis} todasMangueiras={todasMangueiras} dotacaoPorCci={dotacaoPorCci} trocasPlanejadas={trocasPlanejadas}
+          responsavel={responsavel} processando={processando} onDefinir={handleDefinir} onCancelar={handleCancelar} />
 
         <div className="space-y-2">
           <p className="text-xs text-sci-muted font-medium">Mangueiras presentes</p>
@@ -433,14 +566,15 @@ function AbaCcis({ responsavel, bloqueado }) {
   return (
     <div className="space-y-2">
       {ccis.map(c => (
-        <button key={c.id} onClick={() => abrir(c)} className="card w-full flex items-center gap-3 p-2 text-left">
-          <div className="w-36 shrink-0">
+        <button key={c.id} onClick={() => abrir(c)} className="card w-full flex items-center gap-5 py-2 px-3 text-left">
+          <div className="w-24 py-1 shrink-0">
             <IconeCCI numero={c.numero} />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-slate-700">{c.modelo || '—'}</p>
             {c.placa && <p className="text-xs text-slate-400">{c.placa}</p>}
           </div>
+          <BadgeSituacaoCci situacao={c.situacao} />
         </button>
       ))}
     </div>
