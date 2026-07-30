@@ -320,11 +320,11 @@ export async function fetchEstoqueDeposito() {
 // Incremento/decremento por 1 — se essa chamada for reenviada da fila
 // offline, o pior caso é aplicar o delta 2x (contagem errada por 1 unidade,
 // corrigível na próxima conferência física). Aceitável dado o baixo risco.
-async function _ajustarEstoqueDeposito({ tipo, kg, categoria, operacional = true, delta }) {
+async function _ajustarEstoqueDeposito({ tipo, kg, categoria, operacional = true, setor = 'EXTINTORES', delta }) {
   const { data } = await supabase
     .from('estoque_deposito')
     .select('id, quantidade')
-    .eq('tipo', tipo).eq('kg', parseFloat(kg)).eq('categoria', categoria).eq('operacional', operacional)
+    .eq('tipo', tipo).eq('kg', parseFloat(kg)).eq('categoria', categoria).eq('operacional', operacional).eq('setor', setor)
     .single()
   if (!data) return
   const nova = Math.max(0, data.quantidade + delta)
@@ -338,14 +338,14 @@ export async function ajustarEstoqueDeposito(args) {
   return executarOuEnfileirar('ajustarEstoqueDeposito', args, _ajustarEstoqueDeposito)
 }
 
-// upsert com ignoreDuplicates na chave natural (tipo,kg,categoria,operacional)
+// upsert com ignoreDuplicates na chave natural (tipo,kg,categoria,operacional,setor)
 // — reenviar da fila não duplica.
-async function _upsertItemDeposito({ tipo, kg, categoria, operacional = true }) {
+async function _upsertItemDeposito({ tipo, kg, categoria, operacional = true, setor = 'EXTINTORES' }) {
   const { error } = await supabase
     .from('estoque_deposito')
     .upsert(
-      { tipo, kg: parseFloat(kg), categoria, operacional, atualizado_em: new Date().toISOString() },
-      { onConflict: 'tipo,kg,categoria,operacional', ignoreDuplicates: true }
+      { tipo, kg: parseFloat(kg), categoria, operacional, setor, atualizado_em: new Date().toISOString() },
+      { onConflict: 'tipo,kg,categoria,operacional,setor', ignoreDuplicates: true }
     )
   if (error) throw error
 }

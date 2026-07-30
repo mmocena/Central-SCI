@@ -10,6 +10,7 @@ import NaoConformidades from './pages/NaoConformidades'
 import Admin from './pages/Admin'
 import AdminMangueiras from './pages/mangueiras/AdminMangueiras'
 import VistoriaMangueiras from './pages/mangueiras/Vistoria'
+import DepositoMangueiras from './pages/mangueiras/DepositoMangueiras'
 import Header from './components/Header'
 
 export default function App() {
@@ -31,6 +32,7 @@ export default function App() {
               (ver memória project-central-sci-mangueiras), acesso só por URL direta. */}
           <Route path="/mangueiras" element={<AdminMangueiras />} />
           <Route path="/mangueiras/vistoria" element={<VistoriaMangueiras />} />
+          <Route path="/mangueiras/deposito" element={<DepositoMangueiras />} />
         </Routes>
       </main>
     </div>

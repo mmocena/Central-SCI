@@ -177,13 +177,21 @@ create table historico_operacoes (
 -- extintores, ex: placa de sinalização), por tipo+kg+categoria+operacionalidade.
 -- Itens 'OUTRO' gravam kg=0 (placeholder) e operacional=true sempre — não têm
 -- distinção de capacidade nem de operacionalidade.
+-- setor: dono do item (setado automaticamente pela tela onde foi criado, não
+-- escolhido no formulário). compartilhado: quando true, o item também
+-- aparece no Depósito do outro setor (só faz sentido pra categoria OUTRO —
+-- SCI/RESERVA são sempre exclusivos de Extintores). A unicidade inclui
+-- setor porque cada setor pode ter um "Outro" item homônimo (cadastrado
+-- separadamente em cada um).
 create table estoque_deposito (
   id uuid primary key default gen_random_uuid(),
   tipo text not null,
   kg numeric(5,1) not null,
   categoria text not null check (categoria in ('SCI', 'RESERVA', 'OUTRO')),
   operacional boolean not null default true,
-  unique (tipo, kg, categoria, operacional),
+  setor text not null default 'EXTINTORES' check (setor in ('EXTINTORES', 'MANGUEIRAS')),
+  compartilhado boolean not null default false,
+  unique (tipo, kg, categoria, operacional, setor),
   quantidade int not null default 0,
   atualizado_em timestamptz default now()
 );

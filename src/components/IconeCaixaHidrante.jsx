@@ -13,7 +13,7 @@ export default function IconeCaixaHidrante({ numero, className }) {
   // mesma distância da borda superior de antes) — só o raio diminui, dando
   // mais espaço abaixo pro número.
   const circR = 40
-  const circCx = 110, circCy = 44.2 + circR
+  const circCx = 110, circCy = 42 + circR
   const faixaY1 = circCy - 14.5 * (circR / 44), faixaY2 = circCy + 14.5 * (circR / 44)
   const meiaLarguraTopo = Math.sqrt(circR ** 2 - (faixaY1 - circCy) ** 2)
   const meiaLarguraBase = Math.sqrt(circR ** 2 - (faixaY2 - circCy) ** 2)
@@ -27,7 +27,7 @@ export default function IconeCaixaHidrante({ numero, className }) {
   ].join(' ')
 
   return (
-    <svg viewBox="0 0 220 288" width="100%" height="100%" className={className} xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 220 273.6" width="100%" height="100%" className={className} xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="hid-redGrad" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#E5433F"/>
@@ -47,9 +47,9 @@ export default function IconeCaixaHidrante({ numero, className }) {
       </defs>
 
       {/* Moldura embutida */}
-      <rect x="8.8" y="7.2" width="202.4" height="273.6" rx="6" fill="#8A1717"/>
+      <rect x="8.8" y="6.8" width="202.4" height="259.9" rx="6" fill="#8A1717"/>
       {/* Porta */}
-      <rect x="18.7" y="15.3" width="182.6" height="257.4" rx="4" fill="url(#hid-redGrad)"/>
+      <rect x="18.7" y="14.5" width="182.6" height="244.5" rx="4" fill="url(#hid-redGrad)"/>
 
       {/* Janela circular com vidro escuro */}
       <circle cx={circCx} cy={circCy} r={circR} fill="url(#hid-glassGrad)" stroke="#7A1414" strokeWidth="3"/>
@@ -61,21 +61,21 @@ export default function IconeCaixaHidrante({ numero, className }) {
 
       {/* Número do hidrante — abaixo do círculo escuro, em branco, maior */}
       {numero && (
-        <text x="110" y="196" fontFamily="Arial, sans-serif" fontWeight="bold" fontSize="60"
+        <text x="110" y="186.2" fontFamily="Arial, sans-serif" fontWeight="bold" fontSize="60"
           fill="#FFF" textAnchor="middle">
           {String(numero).padStart(2, '0')}
         </text>
       )}
 
       {/* Abridor de porta — meia-lua espelhada e alongada (bojo à esquerda), próxima da borda esquerda, sombra preta sumindo da esquerda pra direita */}
-      <path d="M 29,144.2 L 29,176.2 A 8,16 0 0 0 29,144.2 Z" fill="url(#hid-handleFade)"/>
+      <path d="M 29,137 L 29,167.4 A 8,16 0 0 0 29,137 Z" fill="url(#hid-handleFade)"/>
 
       {/* Grelhas de ventilação */}
       {[52.8, 129.8].map(x => (
         <g key={x}>
-          <rect x={x} y="226.8" width="37.4" height="27" rx="2" fill="#8A1717" opacity="0.4"/>
+          <rect x={x} y="215.5" width="37.4" height="25.6" rx="2" fill="#8A1717" opacity="0.4"/>
           {[0, 1, 2, 3].map(i => (
-            <line key={i} x1={x + 6.6} y1={234 + i * 5.4} x2={x + 30.8} y2={234 + i * 5.4} stroke="#7A1414" strokeWidth="2.5"/>
+            <line key={i} x1={x + 6.6} y1={222.3 + i * 5.1} x2={x + 30.8} y2={222.3 + i * 5.1} stroke="#7A1414" strokeWidth="2.5"/>
           ))}
         </g>
       ))}

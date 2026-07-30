@@ -1,18 +1,14 @@
 import { useEffect, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation } from 'react-router-dom'
 import { fetchLocaisComReserva, fetchLocaisComVencimento, fetchTiposExtintor, fetchEstoqueDeposito, fetchOrdensPendentes, registrarEnvioEstoque, registrarRecebimentoMassa } from '../lib/queries'
 import { unidadeDoTipo } from '../lib/formato'
-import IconeExtintor from '../components/IconeExtintor'
+import { corTipo } from '../lib/coresTipo'
 import ModalLocal from '../components/ModalLocal'
 import { useToast } from '../components/Toast'
 
 const EQUIPES = ['ALFA', 'BRAVO', 'CHARLIE', 'DELTA']
 const STORAGE_KEY = 'sci_responsavel'
-
-function formatarData(iso) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
-}
 
 function formatarValidade(val, nivel) {
   if (!val) return null
@@ -24,19 +20,19 @@ function formatarValidade(val, nivel) {
 
 function CardComoUsar({ descricao, texto, aberto, onToggle }) {
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
+    <div className="bg-red-50 border border-red-200 rounded-xl overflow-hidden">
       <div className="px-4 pt-3 pb-2">
-        <p className="text-xs text-amber-900 leading-relaxed">{descricao}</p>
+        <p className="text-xs text-red-900 leading-relaxed">{descricao}</p>
       </div>
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 py-2 text-left border-t border-amber-100"
+        className="w-full flex items-center justify-between px-4 py-2 text-left border-t border-red-100"
       >
-        <span className="text-xs font-semibold text-amber-700">Como usar?</span>
-        <span className="text-amber-500 text-sm">{aberto ? '▲' : '▼'}</span>
+        <span className="text-xs font-semibold text-sci-red">Como usar?</span>
+        <span className="text-red-400 text-sm">{aberto ? '▲' : '▼'}</span>
       </button>
       {aberto && (
-        <p className="px-4 pb-3 text-xs text-amber-800 leading-relaxed border-t border-amber-100 pt-2">
+        <p className="px-4 pb-3 text-xs text-red-800 leading-relaxed border-t border-red-100 pt-2">
           {texto}
         </p>
       )}
@@ -62,9 +58,13 @@ export default function Manutencoes() {
   const [enviandoEstoque, setEnviandoEstoque] = useState(false)
   const [estoquePainel, setEstoquePainel] = useState(false)
   const [pontosPainel, setPontosPainel] = useState(false)
-  const [selecionados, setSelecionados] = useState(new Set())
-  const [expandidos, setExpandidos] = useState(new Set())
-  const [equipe, setEquipe] = useState('')
+  // Receber: um grupo (tipo|kg) expandido por vez, com a quantidade a
+  // receber escolhida ali mesmo — sem selecionar item por item.
+  const [expandidoChave, setExpandidoChave] = useState(null)
+  const [qtdReceber, setQtdReceber] = useState({})
+  const [modalReceber, setModalReceber] = useState(null)
+  const [nomeModal, setNomeModal] = useState('')
+  const [equipeModal, setEquipeModal] = useState('')
   const [registrando, setRegistrando] = useState(false)
   const [localAberto, setLocalAberto] = useState(null)
   const [envioPreAberto, setEnvioPreAberto] = useState(false)
@@ -109,69 +109,49 @@ export default function Manutencoes() {
 
   useEffect(() => { carregar() }, [carregar])
 
-  function toggleSelecionado(id) {
-    setSelecionados(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  function abrirModalReceber(grupo, chave) {
+    const qtd = qtdReceber[chave] || 0
+    if (qtd === 0) return
+    setModalReceber({ chave, tipo: grupo.tipo, kg: grupo.kg, qtd, itens: grupo.itens })
+    setEquipeModal('')
+    setNomeModal('')
   }
 
-  function toggleGrupo(chave, ids) {
-    const todosSel = ids.every(id => selecionados.has(id))
-    setSelecionados(prev => {
-      const next = new Set(prev)
-      if (todosSel) ids.forEach(id => next.delete(id))
-      else ids.forEach(id => next.add(id))
-      return next
-    })
-  }
-
-  function toggleExpandido(chave) {
-    setExpandidos(prev => {
-      const next = new Set(prev)
-      if (next.has(chave)) next.delete(chave)
-      else next.add(chave)
-      return next
-    })
-  }
-
-  async function handleRecebimento() {
-    if (!responsavel) return alert('Informe seu nome de BA na aba Inspeção antes de continuar.')
-    if (!equipe) return alert('Selecione a equipe.')
-    if (selecionados.size === 0) return alert('Selecione ao menos um extintor.')
+  async function confirmarRecebimento() {
+    const nomeFinal = responsavel || nomeModal.trim()
+    if (!nomeFinal || !equipeModal || !modalReceber) return
     setRegistrando(true)
     try {
-      const ordensSelecionadas = ordens.filter(o => selecionados.has(o.id))
-      const resultado = await registrarRecebimentoMassa({ ordens: ordensSelecionadas, responsavel, equipe })
-      setSelecionados(new Set())
-      setEquipe('')
+      if (!responsavel) localStorage.setItem(STORAGE_KEY, nomeFinal)
+      const ordenadas = [...modalReceber.itens].sort((a, b) => new Date(a.data_saida) - new Date(b.data_saida))
+      const escolhidas = ordenadas.slice(0, modalReceber.qtd)
+      const resultado = await registrarRecebimentoMassa({ ordens: escolhidas, responsavel: nomeFinal, equipe: equipeModal })
+      setQtdReceber(q => ({ ...q, [modalReceber.chave]: 0 }))
+      setExpandidoChave(null)
+      setModalReceber(null)
       showToast(
         resultado.queued ? 'Sem conexão — será enviado automaticamente ao reconectar.' : 'Recebimento registrado com sucesso.',
         resultado.queued ? 'aviso' : 'sucesso'
       )
       await carregar()
     } catch (e) {
-      alert('Erro ao registrar: ' + e.message)
+      showToast('Erro ao registrar: ' + e.message, 'erro')
     } finally {
       setRegistrando(false)
     }
   }
 
   const grupos = ordens.reduce((acc, o) => {
-    const chave = `${o.extintor_saiu_tipo} ${o.extintor_saiu_kg}${unidadeDoTipo(o.extintor_saiu_tipo, tiposExtintor)}`
-    if (!acc[chave]) acc[chave] = []
-    acc[chave].push(o)
+    const chave = `${o.extintor_saiu_tipo}|${o.extintor_saiu_kg}`
+    if (!acc[chave]) acc[chave] = { tipo: o.extintor_saiu_tipo, kg: o.extintor_saiu_kg, itens: [] }
+    acc[chave].itens.push(o)
     return acc
   }, {})
 
   if (loading) return <div className="p-4 text-sm text-slate-500">Carregando...</div>
 
-  const algumSelecionado = selecionados.size > 0
-
   const ABAS = [
-    { id: 'recebimento', label: 'Em manutenção', badge: ordens.length },
+    { id: 'recebimento', label: 'Receber', badge: ordens.length },
     { id: 'envio', label: 'Enviar', badge: vencimentos.length },
     { id: 'substituicao', label: 'Substituir RESERVAS', badge: reservas.length },
   ]
@@ -495,153 +475,77 @@ export default function Manutencoes() {
         </div>
       </section>}
 
-      {/* ── Aba Recebimento ── */}
+      {/* ── Aba Receber ── */}
       {abaAtiva === 'recebimento' && <section className="space-y-3">
 
         <CardComoUsar
           descricao="Registre o retorno de extintores que voltaram da manutenção, removendo da lista de pendências."
           aberto={comoUsarReceb}
           onToggle={() => setComoUsarReceb(v => !v)}
-          texto="Selecione os extintores que retornaram. Após marcar todos, informe a equipe responsável pelo recebimento e confirme — o status de 'Em manutenção' será removido, e o extintor será removido da lista de pendências."
+          texto="Abra o tipo/capacidade que retornou, escolha a quantidade recebida e confirme — as ordens mais antigas daquele tipo são as marcadas como recebidas. Se o nome ainda não foi preenchido na aba Inspeção, ele é pedido no momento da confirmação."
         />
 
-        {ordens.length === 0 && (
+        {ordens.length === 0 ? (
           <div className="card text-center py-6 text-slate-400 text-sm">
             Nenhum extintor em manutenção.
           </div>
-        )}
+        ) : (
+          <>
+            <p className="text-xs text-sci-muted font-semibold uppercase tracking-wider px-1">Em manutenção</p>
 
-        {Object.entries(grupos).map(([chave, itens]) => {
-          const aberto = expandidos.has(chave)
-          const ids = itens.map(o => o.id)
-          const todosSel = ids.every(id => selecionados.has(id))
-          const algumSel = ids.some(id => selecionados.has(id))
-
-          return (
-            <div key={chave} className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
-
-              <button
-                onClick={() => toggleExpandido(chave)}
-                className="w-full flex items-stretch gap-3 p-4 text-left hover:bg-slate-50 transition-colors min-h-[72px]"
-              >
-                <div className="bg-sci-red flex items-center justify-center px-2 rounded-lg shrink-0">
-                  <IconeExtintor size={18} color="#ffffff" />
-                </div>
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <span className="text-sm font-bold text-sci-text shrink-0">{chave}</span>
-                  <div className="self-stretch w-px bg-slate-200 shrink-0" />
-                  <span className="text-2xl font-bold text-sci-text leading-none shrink-0">{itens.length}</span>
-                  <span className="text-sm text-slate-500 leading-tight">unidade{itens.length > 1 ? 's' : ''} em manutenção</span>
-                </div>
-                {algumSel && (
-                  <span className="text-xs font-medium text-white bg-slate-700 px-2 py-0.5 rounded-full shrink-0">
-                    {ids.filter(id => selecionados.has(id)).length} sel.
-                  </span>
-                )}
-                <span className="text-slate-400 text-sm shrink-0 self-center">{aberto ? '▲' : '▼'}</span>
-              </button>
-
-              {aberto && (
-                <div className="border-t border-slate-100">
-                  <button
-                    onClick={() => toggleGrupo(chave, ids)}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 border-b border-slate-100"
-                  >
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                      todosSel ? 'border-slate-800 bg-slate-800' : algumSel ? 'border-slate-400 bg-slate-100' : 'border-slate-300 bg-white'
-                    }`}>
-                      {todosSel && <div className="w-2 h-2 rounded-full bg-white" />}
-                      {algumSel && !todosSel && <div className="w-2 h-0.5 bg-slate-400" />}
-                    </div>
-                    <span className="text-xs font-medium text-slate-600">
-                      {todosSel ? 'Desmarcar todos' : 'Selecionar todos'}
-                    </span>
-                  </button>
-
-                  {itens.map(o => {
-                    const sel = selecionados.has(o.id)
-                    return (
-                      <button
-                        key={o.id}
-                        onClick={() => toggleSelecionado(o.id)}
-                        className={`w-full flex items-start gap-3 px-4 py-3 text-left border-b border-slate-100 last:border-0 transition-colors ${
-                          sel ? 'bg-slate-800' : 'hover:bg-slate-50'
-                        }`}
+            <div className="space-y-2">
+              {Object.entries(grupos).map(([chave, grupo]) => {
+                const aberto = expandidoChave === chave
+                const max = grupo.itens.length
+                const qtd = qtdReceber[chave] || 0
+                const cor = corTipo(grupo.tipo)
+                return (
+                  <div key={chave} className={`rounded-2xl border overflow-hidden shadow-sm ${cor.bg} ${cor.border}`}>
+                    <button
+                      onClick={() => setExpandidoChave(aberto ? null : chave)}
+                      className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left transition-colors"
+                    >
+                      <span className="text-sm">
+                        <span className={`font-bold ${cor.text}`}>{max}</span>{' '}
+                        <span className={`font-semibold ${cor.text}`}>{grupo.tipo} {grupo.kg}{unidadeDoTipo(grupo.tipo, tiposExtintor)}</span>
+                      </span>
+                      <svg
+                        width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                        className={`${cor.text} shrink-0 transition-transform opacity-60 ${aberto ? 'rotate-90' : ''}`}
                       >
-                        <div className={`shrink-0 mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                          sel ? 'border-white bg-white' : 'border-slate-300 bg-white'
-                        }`}>
-                          {sel && <div className="w-2 h-2 rounded-full bg-slate-800" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium leading-tight ${sel ? 'text-white' : 'text-sci-text'}`}>
-                            {o.locais ? (
-                              <>
-                                <span className={`font-bold mr-1 ${sel ? 'text-slate-300' : 'text-sci-red'}`}>
-                                  {String(o.locais.numero).padStart(2, '0')}
-                                </span>
-                                {o.locais.edificacao}
-                                {o.locais.descricao && (
-                                  <span className={`font-normal ml-1 ${sel ? 'text-slate-300' : 'text-slate-500'}`}>
-                                    · {o.locais.descricao}
-                                  </span>
-                                )}
-                                {o.slot === 'B' && (
-                                  <span className={`ml-1 text-xs ${sel ? 'text-slate-400' : 'text-slate-400'}`}>Slot B</span>
-                                )}
-                              </>
-                            ) : (
-                              <span className={sel ? 'text-slate-300' : 'text-slate-500'}>
-                                Estoque {o.origem_categoria || ''} / Depósito
-                              </span>
-                            )}
-                          </p>
-                          <p className={`text-xs mt-0.5 ${sel ? 'text-slate-300' : 'text-slate-500'}`}>
-                            {o.nivel_manutencao && `Nível ${o.nivel_manutencao} · `}Saída {formatarData(o.data_saida)} · {o.responsavel_saida}
-                          </p>
-                          {o.locais && (
-                            <p className={`text-xs mt-0.5 ${sel ? 'text-slate-400' : 'text-slate-400'}`}>
-                              Substituto: {o.substituto_tipo} {o.substituto_kg}{unidadeDoTipo(o.substituto_tipo, tiposExtintor)}
-                              {o.substituto_reserva
-                                ? <span className="text-blue-400 font-medium"> · RESERVA</span>
-                                : ' · Estoque SCI'
-                              }
-                            </p>
-                          )}
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )
-        })}
+                        <path d="M9 18l6-6-6-6" />
+                      </svg>
+                    </button>
 
-        {algumSelecionado && (
-          <div className="card space-y-3 border-slate-300">
-            <p className="text-sm font-semibold text-sci-text">
-              Registrar recebimento — {selecionados.size} extintor{selecionados.size > 1 ? 'es' : ''}
-            </p>
-            <div className="grid grid-cols-4 gap-2">
-              {EQUIPES.map(eq => (
-                <button
-                  key={eq}
-                  onClick={() => setEquipe(eq)}
-                  className={`btn-option text-sm font-semibold ${equipe === eq ? 'selected' : ''}`}
-                >
-                  {eq}
-                </button>
-              ))}
+                    {aberto && (
+                      <div className="border-t border-black/5 p-4 flex items-center gap-3 bg-white/50">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setQtdReceber(q => ({ ...q, [chave]: Math.max(0, (q[chave] || 0) - 1) }))}
+                            disabled={qtd === 0}
+                            className="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-500 text-sm leading-none flex items-center justify-center hover:bg-slate-50 disabled:opacity-30"
+                          >−</button>
+                          <span className={`w-7 text-center text-sm font-semibold ${qtd === 0 ? 'text-slate-300' : 'text-sci-text'}`}>{qtd}</span>
+                          <button
+                            onClick={() => setQtdReceber(q => ({ ...q, [chave]: Math.min(max, (q[chave] || 0) + 1) }))}
+                            disabled={qtd >= max}
+                            className="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-500 text-sm leading-none flex items-center justify-center hover:bg-slate-50 disabled:opacity-30"
+                          >+</button>
+                        </div>
+                        <button
+                          onClick={() => abrirModalReceber(grupo, chave)}
+                          disabled={qtd === 0}
+                          className="btn-primary flex-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Receber
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
-            <button
-              onClick={handleRecebimento}
-              disabled={registrando || !equipe}
-              className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {registrando ? 'Registrando...' : 'Confirmar recebimento'}
-            </button>
-          </div>
+          </>
         )}
       </section>}
 
@@ -783,6 +687,57 @@ export default function Manutencoes() {
           substituicaoAtiva={abaAtiva === 'substituicao'}
           envioPreAberto={envioPreAberto}
         />
+      )}
+
+      {modalReceber && createPortal(
+        <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => !registrando && setModalReceber(null)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div>
+              <p className="font-semibold text-sci-text">Confirmar recebimento</p>
+              <p className="text-sm text-slate-500 mt-0.5">
+                {modalReceber.qtd} × {modalReceber.tipo} {modalReceber.kg}{unidadeDoTipo(modalReceber.tipo, tiposExtintor)}
+              </p>
+            </div>
+
+            {!responsavel && (
+              <div>
+                <label className="text-xs text-slate-400">Nome</label>
+                <input
+                  type="text"
+                  value={nomeModal}
+                  onChange={e => setNomeModal(e.target.value)}
+                  placeholder="Seu nome"
+                  autoFocus
+                  className="w-full mt-1"
+                />
+              </div>
+            )}
+
+            <div>
+              <p className="text-xs text-slate-400 mb-1.5">Equipe</p>
+              <div className="grid grid-cols-4 gap-2">
+                {EQUIPES.map(eq => (
+                  <button
+                    key={eq}
+                    onClick={() => setEquipeModal(eq)}
+                    className={`btn-option text-sm font-semibold ${equipeModal === eq ? 'selected' : ''}`}
+                  >
+                    {eq}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={confirmarRecebimento}
+              disabled={registrando || !equipeModal || (!responsavel && !nomeModal.trim())}
+              className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {registrando ? 'Registrando...' : 'Confirmar recebimento'}
+            </button>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   )

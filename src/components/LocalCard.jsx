@@ -1,23 +1,11 @@
 import IconeExtintor from './IconeExtintor'
 import { unidadeDoTipo } from '../lib/formato'
 import { tipoDivergente } from '../lib/conformidade'
+import { corTipo } from '../lib/coresTipo'
 
 const SITUACAO = {
   conforme:     { cor: 'text-green-600', bg: 'bg-green-50 border-green-200',  label: 'Conforme' },
   nao_conforme: { cor: 'text-red-600',   bg: 'bg-red-50 border-red-200',      label: 'Não Conforme' }
-}
-
-// Cor por tipo de extintor (tipo normalizado para lowercase)
-const COR_TIPO = {
-  'co²':     { text: 'text-amber-700',   bg: 'bg-amber-50',   border: 'border-amber-200' },
-  'pqs bc':  { text: 'text-teal-700',    bg: 'bg-teal-50',    border: 'border-teal-200' },
-  'pqs abc': { text: 'text-violet-700',  bg: 'bg-violet-50',  border: 'border-violet-200' },
-  'água':    { text: 'text-fuchsia-700', bg: 'bg-fuchsia-50', border: 'border-fuchsia-200' },
-}
-
-function corTipo(tipo) {
-  if (!tipo) return null
-  return COR_TIPO[tipo.toLowerCase()] ?? { text: 'text-slate-700', bg: 'bg-slate-100', border: 'border-slate-200' }
 }
 
 function formatarData(iso) {

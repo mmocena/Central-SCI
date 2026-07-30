@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
@@ -7,6 +8,8 @@ import {
 } from '../lib/queries'
 import { tipoDivergente, textoTipoDivergente } from '../lib/conformidade'
 import { locaisNecessitandoTroca, origensRecomendadasParaCapacidade } from '../lib/trocas'
+import { unidadeDoTipo } from '../lib/formato'
+import { corTipo } from '../lib/coresTipo'
 import ModalDetalhesLocal from '../components/ModalDetalhesLocal'
 import ModalListaExtintores from '../components/ModalListaExtintores'
 import ModalAlertaTipoDivergente from '../components/ModalAlertaTipoDivergente'
@@ -258,6 +261,7 @@ export default function Dashboard() {
   const [listaAberta, setListaAberta] = useState(null)
   const [substituindoLocal, setSubstituindoLocal] = useState(null)
   const [tipoDivergenteAberto, setTipoDivergenteAberto] = useState(false)
+  const [manutencaoAberta, setManutencaoAberta] = useState(false)
   // chave (localId:slot) ou id de troca em andamento — desabilita e mostra
   // feedback imediato no botão clicado, sem esperar o round-trip completo.
   const [processando, setProcessando] = useState(null)
@@ -498,7 +502,7 @@ export default function Dashboard() {
             valor={ordensPendentes.length}
             cls="text-slate-500"
             rotulo="Ver"
-            onClick={() => navigate('/manutencoes', { state: { aba: 'recebimento' } })}
+            onClick={() => setManutencaoAberta(true)}
           />
           <Stat label="RESERVA em campo" valor={linhasReserva.length} cls="text-blue-600" rotulo="Ver" onClick={() => abrirLista('RESERVA em campo', linhasReserva, 'azul')} />
         </div>
@@ -562,6 +566,58 @@ export default function Dashboard() {
           onAtualizar={carregar}
         />
       )}
+
+      {manutencaoAberta && (
+        <ModalEmManutencao
+          ordensPendentes={ordensPendentes}
+          tiposExtintor={tiposExtintor}
+          onClose={() => setManutencaoAberta(false)}
+          onGerenciar={() => { setManutencaoAberta(false); navigate('/manutencoes', { state: { aba: 'recebimento' } }) }}
+        />
+      )}
     </div>
+  )
+}
+
+// Quantidades por tipo/kg em manutenção — abre a partir do card "Em
+// manutenção" do Dashboard; "Gerenciar" leva pra aba Receber de
+// Manutenções, onde de fato dá pra confirmar o recebimento.
+function ModalEmManutencao({ ordensPendentes, tiposExtintor, onClose, onGerenciar }) {
+  const grupos = ordensPendentes.reduce((acc, o) => {
+    const chave = `${o.extintor_saiu_tipo}|${o.extintor_saiu_kg}`
+    if (!acc[chave]) acc[chave] = { tipo: o.extintor_saiu_tipo, kg: o.extintor_saiu_kg, qtd: 0 }
+    acc[chave].qtd += 1
+    return acc
+  }, {})
+
+  return createPortal(
+    <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <p className="font-semibold text-sci-text">Em manutenção</p>
+          <button onClick={onClose} className="text-sci-muted text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100">×</button>
+        </div>
+
+        <div className="space-y-1.5">
+          {Object.values(grupos).map(grupo => {
+            const cor = corTipo(grupo.tipo)
+            return (
+              <div
+                key={`${grupo.tipo}|${grupo.kg}`}
+                className={`flex items-center justify-between px-3 py-2 rounded-lg border ${cor.bg} ${cor.border}`}
+              >
+                <span className={`text-sm font-medium ${cor.text}`}>{grupo.tipo} {grupo.kg}{unidadeDoTipo(grupo.tipo, tiposExtintor)}</span>
+                <span className={`text-sm font-bold ${cor.text}`}>{grupo.qtd}</span>
+              </div>
+            )
+          })}
+        </div>
+
+        <button onClick={onGerenciar} className="btn-primary w-full">
+          Gerenciar
+        </button>
+      </div>
+    </div>,
+    document.body
   )
 }

@@ -575,7 +575,12 @@ function AdminCcis() {
 
 const MANGUEIRA_VAZIA = { identificacao: '', tipo_mangueira_id: '', localizacao_tipo: '', hidrante_id: '', cci_id: '', validade_teste_hidrostatico: '' }
 
-function AdminMangueirasTab() {
+// localizacaoFixa: quando informado ('DEPOSITO'), filtra a lista só pra essa
+// localização e o formulário de "+ Nova Mangueira" já abre com ela
+// pré-selecionada — usado pela aba "Mangueiras" do Depósito do setor
+// (src/pages/mangueiras/DepositoMangueiras.jsx), que reaproveita 100% deste
+// componente em vez de duplicar formulário/lista.
+export function AdminMangueirasTab({ localizacaoFixa } = {}) {
   const showToast = useToast()
   const [mangueiras, setMangueiras] = useState([])
   const [tiposMangueira, setTiposMangueira] = useState([])
@@ -599,12 +604,13 @@ function AdminMangueirasTab() {
       .select('*, tipos_mangueira(tipo, diametro, comprimento), hidrantes(numero, edificacao), ccis(numero, placa)')
       .eq('ativo', true)
       .order('identificacao')
-    setMangueiras(data || [])
+    const todas = data || []
+    setMangueiras(localizacaoFixa ? todas.filter(m => m.localizacao_tipo === localizacaoFixa) : todas)
   }
 
   function novo() {
     setEditandoId(null)
-    setForm(MANGUEIRA_VAZIA)
+    setForm({ ...MANGUEIRA_VAZIA, localizacao_tipo: localizacaoFixa || '' })
     setFormAberto(true)
   }
 

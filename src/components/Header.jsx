@@ -97,6 +97,17 @@ const MENU_ITEMS_MANGUEIRAS = [
     ),
   },
   {
+    to: '/mangueiras/deposito',
+    label: 'Depósito',
+    end: true,
+    icon: (active) => (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#dc2626' : '#64748b'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M5 8h14M5 8a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v0a2 2 0 01-2 2M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/>
+        <line x1="10" y1="12" x2="14" y2="12"/>
+      </svg>
+    ),
+  },
+  {
     to: '/',
     label: 'Extintores',
     end: true,
