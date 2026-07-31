@@ -49,8 +49,10 @@ const ICONE_PADRAO = {
 // em vez de ícone (ex: "Item compartilhado"); nesse caso só o próprio
 // checkbox aciona onClick (o label é só texto, não clicável, pra evitar
 // toggle sem querer ao ler a explicação). `info` (texto) adiciona um botão
-// "i" que mostra uma explicação sem acionar onClick.
-export default function AcoesKebab({ acoes }) {
+// "i" que mostra uma explicação sem acionar onClick. `compacto` reduz o
+// botão (usado em tabelas apertadas, como as de estoque, pra sobrar mais
+// espaço pra coluna de texto ao lado).
+export default function AcoesKebab({ acoes, compacto = false }) {
   const [aberto, setAberto] = useState(false)
   const [infoAberto, setInfoAberto] = useState(null)
 
@@ -63,7 +65,7 @@ export default function AcoesKebab({ acoes }) {
     <div className="relative shrink-0">
       <button
         onClick={() => setAberto(v => !v)}
-        className="w-7 h-7 flex flex-col items-center justify-center gap-[3px] rounded-lg hover:bg-slate-100 transition-colors"
+        className={`flex flex-col items-center justify-center rounded-lg hover:bg-slate-100 transition-colors ${compacto ? 'w-5 h-5 gap-[2px]' : 'w-7 h-7 gap-[3px]'}`}
         aria-label="Ações"
       >
         <span className="w-1 h-1 rounded-full bg-slate-400" />
@@ -74,7 +76,7 @@ export default function AcoesKebab({ acoes }) {
       {aberto && (
         <>
           <div className="fixed inset-0 z-40" onClick={fechar} />
-          <div className="absolute right-0 top-8 z-50 bg-white border border-slate-200 rounded-xl shadow-lg py-1 min-w-max">
+          <div className={`absolute right-0 z-50 bg-white border border-slate-200 rounded-xl shadow-lg py-1 min-w-max ${compacto ? 'top-6' : 'top-8'}`}>
             {acoes.map(a => {
               const isCheckbox = a.checked !== undefined
               return (

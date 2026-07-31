@@ -20,19 +20,19 @@ function formatarValidade(val, nivel) {
 
 function CardComoUsar({ descricao, texto, aberto, onToggle }) {
   return (
-    <div className="bg-red-50 border border-red-200 rounded-xl overflow-hidden">
+    <div className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
       <div className="px-4 pt-3 pb-2">
-        <p className="text-xs text-red-900 leading-relaxed">{descricao}</p>
+        <p className="text-xs text-amber-900 leading-relaxed">{descricao}</p>
       </div>
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 py-2 text-left border-t border-red-100"
+        className="w-full flex items-center justify-between px-4 py-2 text-left border-t border-amber-100"
       >
-        <span className="text-xs font-semibold text-sci-red">Como usar?</span>
-        <span className="text-red-400 text-sm">{aberto ? '▲' : '▼'}</span>
+        <span className="text-xs font-semibold text-amber-700">Como usar?</span>
+        <span className="text-amber-500 text-sm">{aberto ? '▲' : '▼'}</span>
       </button>
       {aberto && (
-        <p className="px-4 pb-3 text-xs text-red-800 leading-relaxed border-t border-red-100 pt-2">
+        <p className="px-4 pb-3 text-xs text-amber-800 leading-relaxed border-t border-amber-100 pt-2">
           {texto}
         </p>
       )}

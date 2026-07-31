@@ -57,7 +57,7 @@ export function TabelaEstoque({
   onGerenciar, onSalvarLinha, onCancelarLinha, onExcluir
 }) {
   const total = linhas.reduce((acc, l) => ({ oper: acc.oper + l.oper, naoOper: acc.naoOper + l.naoOper }), { oper: 0, naoOper: 0 })
-  const colunas = 'grid grid-cols-[1fr,4.5rem,4.5rem,3.5rem,1.75rem] gap-1 items-center'
+  const colunas = 'grid grid-cols-[1fr,4.5rem,4.5rem,3.5rem,1.25rem] gap-1 items-center'
 
   return (
     <div className="space-y-2">
@@ -95,7 +95,7 @@ export function TabelaEstoque({
                       <span className={`text-center text-sm font-semibold ${l.naoOper === 0 ? 'text-slate-300' : 'text-amber-700'}`}>{l.naoOper}</span>
                     )}
                     <span className="text-center text-sm font-bold text-sci-text">{l.oper + l.naoOper}</span>
-                    <AcoesKebab acoes={acoesLinha({ linha: l, permiteCompartilhar: false, onGerenciar, onExcluir })} />
+                    <AcoesKebab acoes={acoesLinha({ linha: l, permiteCompartilhar: false, onGerenciar, onExcluir })} compacto />
                   </div>
                   {editando && <BarraSalvarCancelar onSalvar={onSalvarLinha} onCancelar={onCancelarLinha} salvando={salvandoLinha} />}
                 </div>
@@ -123,7 +123,7 @@ export function TabelaSimples({
   onGerenciar, onSalvarLinha, onCancelarLinha, onCompartilhar, onExcluir
 }) {
   const total = linhas.reduce((s, l) => s + l.qtd, 0)
-  const colunas = 'grid grid-cols-[1fr,4.5rem,1.75rem] gap-1 items-center'
+  const colunas = 'grid grid-cols-[1fr,4.5rem,1.25rem] gap-1 items-center'
 
   return (
     <div className="space-y-2">
@@ -156,7 +156,7 @@ export function TabelaSimples({
                     ) : (
                       <span className={`text-center text-sm font-bold ${l.qtd === 0 ? 'text-slate-300' : 'text-sci-text'}`}>{l.qtd}</span>
                     )}
-                    <AcoesKebab acoes={acoesLinha({ linha: l, permiteCompartilhar, onGerenciar, onCompartilhar, onExcluir })} />
+                    <AcoesKebab acoes={acoesLinha({ linha: l, permiteCompartilhar, onGerenciar, onCompartilhar, onExcluir })} compacto />
                   </div>
                   {editando && <BarraSalvarCancelar onSalvar={onSalvarLinha} onCancelar={onCancelarLinha} salvando={salvandoLinha} />}
                 </div>

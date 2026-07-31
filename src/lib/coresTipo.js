@@ -2,7 +2,7 @@
 // entre LocalCard (badge de tipo) e a tabela do Depósito (fundo da linha).
 const COR_TIPO = {
   'co²':     { text: 'text-violet-700',  bg: 'bg-violet-50',  border: 'border-violet-200' },
-  'pqs bc':  { text: 'text-amber-700',   bg: 'bg-amber-50',   border: 'border-amber-200' },
+  'pqs bc':  { text: 'text-orange-600',  bg: 'bg-orange-50',  border: 'border-orange-200' },
   'pqs abc': { text: 'text-teal-700',    bg: 'bg-teal-50',    border: 'border-teal-200' },
   'água':    { text: 'text-fuchsia-700', bg: 'bg-fuchsia-50', border: 'border-fuchsia-200' },
 }
