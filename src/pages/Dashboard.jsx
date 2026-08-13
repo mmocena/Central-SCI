@@ -380,6 +380,9 @@ export default function Dashboard() {
     l.estado.data_ultima_inspecao && (!inicioPeriodo || l.estado.data_ultima_inspecao >= inicioPeriodo)
   )
   const linhasNaoVistoriadas = linhas.filter(l => !linhasVistoriadas.includes(l))
+  // Situação atual (não período) — usada no anel de conformidade, que mostra
+  // "nunca vistoriado" e não "não vistoriado nesse período".
+  const linhasSemInspecao = linhas.filter(l => !l.estado.data_ultima_inspecao)
   const linhasConforme = linhas.filter(l => l.estado.situacao_conformidade === 'conforme')
   const linhasNaoConforme = linhas.filter(l => l.estado.situacao_conformidade === 'nao_conforme')
   const linhasReserva = linhas.filter(l => l.estado.reserva_empresa)
@@ -463,20 +466,20 @@ export default function Dashboard() {
               vertical
               conforme={linhasConforme.length}
               naoConforme={linhasNaoConforme.length}
-              naoVistoriados={naoVistoriados}
+              naoVistoriados={linhasSemInspecao.length}
               onVerConforme={() => abrirLista('Conforme', linhasConforme, 'verde')}
               onVerNaoConforme={() => navigate('/nao-conformidades')}
-              onVerNaoVistoriados={() => abrirLista('Sem inspeção', linhasNaoVistoriadas)}
+              onVerNaoVistoriados={() => abrirLista('Sem inspeção', linhasSemInspecao)}
             />
           </div>
           <div className="hidden lg:flex lg:flex-1">
             <AnelConformidade
               conforme={linhasConforme.length}
               naoConforme={linhasNaoConforme.length}
-              naoVistoriados={naoVistoriados}
+              naoVistoriados={linhasSemInspecao.length}
               onVerConforme={() => abrirLista('Conforme', linhasConforme, 'verde')}
               onVerNaoConforme={() => navigate('/nao-conformidades')}
-              onVerNaoVistoriados={() => abrirLista('Sem inspeção', linhasNaoVistoriadas)}
+              onVerNaoVistoriados={() => abrirLista('Sem inspeção', linhasSemInspecao)}
             />
           </div>
         </div>

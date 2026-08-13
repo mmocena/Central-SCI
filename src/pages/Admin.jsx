@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase'
 import { salvarRegistroAdmin, atualizarCampoAdmin, excluirRegistroAdmin } from '../lib/queries'
 import { useToast, avisarResultado } from '../components/Toast'
 import TelaLoginAdmin, { SESSION_KEY } from '../components/TelaLoginAdmin'
+import ModalConfirmar from '../components/ModalConfirmar'
+import ModalFormulario from '../components/ModalFormulario'
 
 function ToggleSinalizacao({ valor, onChange }) {
   return (
@@ -58,16 +60,49 @@ function AdminLocais() {
   const [salvando, setSalvando] = useState(false)
   const [editandoId, setEditandoId] = useState(null)
   const [formAberto, setFormAberto] = useState(false)
+  const [desativados, setDesativados] = useState([])
+  const [verDesativados, setVerDesativados] = useState(false)
+  const [paraExcluir, setParaExcluir] = useState(null)
 
   useEffect(() => { carregar() }, [])
 
   async function carregar() {
-    const [{ data: ls }, { data: ts }] = await Promise.all([
+    const [{ data: ls }, { data: ds }, { data: ts }] = await Promise.all([
       supabase.from('locais').select('*').eq('ativo', true).order('numero'),
+      supabase.from('locais').select('*').eq('ativo', false).order('numero'),
       supabase.from('tipos_extintor').select('tipo').eq('ativo', true)
     ])
     setLocais(ls || [])
+    setDesativados(ds || [])
     setTipos(ts || [])
+  }
+
+  async function desativar(id) {
+    try {
+      const resultado = await atualizarCampoAdmin({ tabela: 'locais', id, campos: { ativo: false } })
+      avisarResultado(showToast, resultado, 'Local desativado.')
+      carregar()
+    } catch (e) { alert('Erro: ' + e.message) }
+  }
+
+  async function reativar(id) {
+    try {
+      const resultado = await atualizarCampoAdmin({ tabela: 'locais', id, campos: { ativo: true } })
+      avisarResultado(showToast, resultado, 'Local reativado.')
+      carregar()
+    } catch (e) { alert('Erro: ' + e.message) }
+  }
+
+  async function confirmarExclusao() {
+    const id = paraExcluir
+    setParaExcluir(null)
+    try {
+      const resultado = await excluirRegistroAdmin({ tabela: 'locais', id })
+      avisarResultado(showToast, resultado, 'Local excluído.')
+      carregar()
+    } catch (e) {
+      alert('Erro ao excluir: ' + e.message + (e.message?.includes('violates foreign key') ? '\n\nEsse local já tem histórico de inspeções — desative-o em vez de excluir.' : ''))
+    }
   }
 
   const edificacoesUnicas = [...new Set(locais.map(l => l.edificacao).filter(Boolean))].sort()
@@ -105,6 +140,7 @@ function AdminLocais() {
 
   async function salvar() {
     if (!form.numero || !form.edificacao) return alert('Número e Edificação são obrigatórios.')
+    if (!form.tem_slot_a && !form.tem_slot_b) return alert('Marque pelo menos um slot (A ou B). Um local sem nenhum slot não pode ser vistoriado — para removê-lo do sistema, use Desativar na lista.')
     setSalvando(true)
     const payload = {
       numero: parseInt(form.numero),
@@ -140,11 +176,7 @@ function AdminLocais() {
       )}
 
       {formAberto && (
-      <div className="card space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-bold text-sci-text">{editandoId ? 'Editar Local' : 'Novo Local'}</p>
-          <button onClick={cancelarEdicao} className="text-xs text-slate-400 underline">Cancelar</button>
-        </div>
+      <ModalFormulario titulo={editandoId ? 'Editar Local' : 'Novo Local'} onFechar={cancelarEdicao}>
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="text-xs text-slate-400">Número *</label>
@@ -245,7 +277,7 @@ function AdminLocais() {
         <button onClick={salvar} disabled={salvando} className="btn-primary w-full">
           {salvando ? 'Salvando...' : editandoId ? 'Salvar Alterações' : 'Adicionar Local'}
         </button>
-      </div>
+      </ModalFormulario>
       )}
 
       <div className="space-y-2">
@@ -271,12 +303,57 @@ function AdminLocais() {
               )}
             </div>
             {/* Ações */}
-            <div className="flex items-center pr-3 shrink-0">
+            <div className="flex items-center gap-3 pr-3 shrink-0">
               <button onClick={() => editarLocal(l)} className="text-xs text-slate-400 hover:text-sci-red underline">editar</button>
+              <button onClick={() => desativar(l.id)} className="text-xs text-slate-400 hover:text-amber-600 transition-colors">desativar</button>
             </div>
           </div>
         ))}
       </div>
+
+      {desativados.length > 0 && (
+        <div>
+          <button
+            onClick={() => setVerDesativados(v => !v)}
+            className="text-xs text-slate-400 underline"
+          >
+            {verDesativados ? 'Ocultar desativados' : `Ver desativados (${desativados.length})`}
+          </button>
+          {verDesativados && (
+            <div className="space-y-2 mt-2">
+              {desativados.map(l => (
+                <div key={l.id} className="card flex items-stretch justify-between gap-3 p-0 overflow-hidden opacity-50">
+                  <div className="bg-slate-400 flex items-center justify-center min-w-[4rem] px-2 shrink-0 self-stretch">
+                    <span className="font-bold text-white text-sm">{String(l.numero).padStart(2, '0')}</span>
+                  </div>
+                  <div className="flex-1 py-2.5 min-w-0">
+                    <p className="text-xs font-medium text-slate-700 leading-tight line-through">
+                      {l.edificacao}
+                    </p>
+                    {l.descricao && (
+                      <p className="text-xs text-slate-400 leading-tight mt-0.5">{l.descricao}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 pr-3 shrink-0">
+                    <button onClick={() => reativar(l.id)} className="text-xs text-blue-500 hover:text-blue-700 transition-colors no-underline">reativar</button>
+                    <button onClick={() => setParaExcluir(l.id)} className="text-xs text-slate-400 hover:text-red-600 transition-colors">excluir</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {paraExcluir && (
+        <ModalConfirmar
+          titulo="Excluir local permanentemente?"
+          mensagem="Essa ação não pode ser desfeita. Se o local já tiver histórico de inspeções, a exclusão será bloqueada — use Desativar nesse caso."
+          textoConfirmar="Excluir"
+          onConfirmar={confirmarExclusao}
+          onCancelar={() => setParaExcluir(null)}
+        />
+      )}
     </div>
   )
 }
