@@ -118,7 +118,7 @@ function ComparacaoDotacao({ dotacao, mangueiras, cci, todosCcis, todasMangueira
       {dotacao.map(d => {
         const presente = contagem[d.tipo_mangueira_id] || 0
         const ok = presente >= d.quantidade_exigida
-        const planos = trocasPlanejadasParaCci(trocasPlanejadas, cci.id).filter(t => t.mangueira?.tipo_mangueira_id === d.tipo_mangueira_id)
+        const planos = cci ? trocasPlanejadasParaCci(trocasPlanejadas, cci.id).filter(t => t.mangueira?.tipo_mangueira_id === d.tipo_mangueira_id) : []
         const faltamRestante = Math.max(0, d.quantidade_exigida - presente - planos.length)
         return (
           <div key={d.id} className="space-y-1.5">
@@ -138,7 +138,7 @@ function ComparacaoDotacao({ dotacao, mangueiras, cci, todosCcis, todasMangueira
                 </button>
               </div>
             ))}
-            {!ok && cci.situacao === 'LINHA' && faltamRestante > 0 && (
+            {!ok && cci?.situacao === 'LINHA' && faltamRestante > 0 && (
               <SugestaoRealocacaoMangueira
                 cci={cci} tipoMangueiraId={d.tipo_mangueira_id}
                 todosCcis={todosCcis} todasMangueiras={todasMangueiras} dotacaoPorCci={dotacaoPorCci} trocasPlanejadas={trocasPlanejadas}
